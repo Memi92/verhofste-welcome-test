@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Image as ImageIcon,
+  LogOut,
   RotateCcw,
   Save,
   UserMinus,
@@ -12,6 +13,7 @@ import {
 import {
   createEmployeeAction,
   deactivateEmployeeAction,
+  logoutAdminAction,
   reactivateEmployeeAction,
   updateEmployeeAction,
 } from "@/app/admin/actions";
@@ -146,8 +148,18 @@ export function EmployeeManager({
               employees.
             </p>
           </div>
-          <div className="flex items-center gap-3 text-sm text-neutral-600">
+          <div className="flex flex-wrap items-center gap-3 text-sm text-neutral-600">
             <span>{employees.length} employees</span>
+            <form action={logoutAdminAction}>
+              <Button
+                type="submit"
+                variant="outline"
+                className="h-10 rounded-[8px]"
+              >
+                <LogOut className="size-4" aria-hidden="true" />
+                Log out
+              </Button>
+            </form>
           </div>
         </header>
 

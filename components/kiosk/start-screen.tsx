@@ -64,7 +64,7 @@ export function KioskStartScreen() {
           variant="ghost"
           className="h-12 rounded-[8px] px-4 text-neutral-500 hover:text-neutral-950"
         >
-          <Link href="/pin" aria-label="Employee access">
+          <Link href="/employee" aria-label="Employee access">
             <ShieldCheck className="size-5" aria-hidden="true" />
             Employee access
           </Link>

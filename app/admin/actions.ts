@@ -8,6 +8,7 @@ import {
   setEmployeeActive,
   updateEmployee,
 } from "@/lib/supabaseEmployees";
+import { createClient } from "@/lib/supabase/server";
 import type { EmployeeFormValues } from "@/types";
 
 function getString(formData: FormData, key: string) {
@@ -55,4 +56,15 @@ export async function reactivateEmployeeAction(formData: FormData) {
   const id = getString(formData, "id");
   const result = await setEmployeeActive(id, true);
   finish(result);
+}
+
+export async function logoutAdminAction() {
+  const supabase = await createClient();
+
+  if (supabase) {
+    await supabase.auth.signOut();
+  }
+
+  revalidatePath("/", "layout");
+  redirect("/admin/login");
 }

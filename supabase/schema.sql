@@ -87,28 +87,32 @@ alter table public.event_logs enable row level security;
 alter table public.access_codes enable row level security;
 
 -- DEVELOPMENT ONLY: Temporary employee policies for local kiosk/admin testing.
--- TODO: Before production, replace anon insert/update with authenticated
--- admin-only policies. Public read access is also a temporary development
--- choice and must be reviewed before go-live.
+-- These policies intentionally allow both anonymous visitor reads and
+-- authenticated admin writes during development.
+-- TODO: Before production, restrict INSERT and UPDATE to authenticated admin
+-- users only.
+-- TODO: Public read access is a temporary development choice. Production
+-- visitor reads should expose only active employees, preferably through a
+-- least-privilege policy or view that does not leak inactive employee rows.
 drop policy if exists "development employees anon select" on public.employees;
 create policy "development employees anon select"
   on public.employees
   for select
-  to anon
+  to anon, authenticated
   using (true);
 
 drop policy if exists "development employees anon insert" on public.employees;
 create policy "development employees anon insert"
   on public.employees
   for insert
-  to anon
+  to anon, authenticated
   with check (true);
 
 drop policy if exists "development employees anon update" on public.employees;
 create policy "development employees anon update"
   on public.employees
   for update
-  to anon
+  to anon, authenticated
   using (true)
   with check (true);
 

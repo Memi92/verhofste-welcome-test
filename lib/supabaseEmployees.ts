@@ -1,6 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
-
 import { activeMockEmployees, mockEmployees } from "@/lib/mockData";
+import { createClient } from "@/lib/supabase/server";
 import type { Employee, EmployeeFormValues } from "@/types";
 
 type EmployeeRow = {
@@ -28,22 +27,6 @@ type MutationResult = {
 
 const employeeSelect =
   "id,name,department,function,phone_extension,image_url,is_active,created_at,updated_at";
-
-function getSupabaseClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
-    return null;
-  }
-
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
 
 function normalizeEmployee(row: EmployeeRow): Employee {
   return {
@@ -82,8 +65,10 @@ function validateEmployeeValues(values: EmployeeFormValues) {
   return null;
 }
 
-export async function getEmployees(activeOnly = false): Promise<EmployeeLoadResult> {
-  const supabase = getSupabaseClient();
+export async function getEmployees(
+  activeOnly = false
+): Promise<EmployeeLoadResult> {
+  const supabase = await createClient();
 
   if (!supabase) {
     return {
@@ -131,7 +116,7 @@ export async function createEmployee(
     return { ok: false, message: validationError };
   }
 
-  const supabase = getSupabaseClient();
+  const supabase = await createClient();
 
   if (!supabase) {
     return {
@@ -162,7 +147,7 @@ export async function updateEmployee(
     return { ok: false, message: validationError };
   }
 
-  const supabase = getSupabaseClient();
+  const supabase = await createClient();
 
   if (!supabase) {
     return {
@@ -190,7 +175,7 @@ export async function setEmployeeActive(
   id: Employee["id"],
   isActive: boolean
 ): Promise<MutationResult> {
-  const supabase = getSupabaseClient();
+  const supabase = await createClient();
 
   if (!supabase) {
     return {

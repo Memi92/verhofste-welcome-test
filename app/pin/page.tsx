@@ -32,9 +32,9 @@ export default function PinPage() {
         </CardHeader>
         <CardContent className="px-8 pb-8">
           <Button asChild variant="outline" className="h-14 w-full rounded-[8px]">
-            <Link href="/">
+            <Link href="/employee">
               <ArrowLeft className="size-5" aria-hidden="true" />
-              Back to reception
+              Back to employee access
             </Link>
           </Button>
         </CardContent>

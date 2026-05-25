@@ -1,5 +1,20 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Supabase admin user setup
+
+The admin portal uses Supabase Auth email/password login. Create the first
+admin user manually in Supabase:
+
+1. Open the Supabase Dashboard.
+2. Go to Authentication > Users.
+3. Click Add user.
+4. Enter the admin email and password.
+5. Use that email and password at `/admin/login`.
+
+Do not add admin passwords to this repository or to public environment
+variables. The app only needs `NEXT_PUBLIC_SUPABASE_URL` and either
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+
 ## Getting Started
 
 First, run the development server:
