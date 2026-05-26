@@ -82,6 +82,26 @@ create index if not exists access_codes_is_active_idx
 comment on table public.access_codes is
   'Future table for employee access. Store only hashed PINs; never store raw codes.';
 
+insert into storage.buckets (
+  id,
+  name,
+  public,
+  file_size_limit,
+  allowed_mime_types
+)
+values (
+  'employee-photos',
+  'employee-photos',
+  true,
+  2097152,
+  array['image/jpeg', 'image/png', 'image/webp']
+)
+on conflict (id) do update
+set
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
 alter table public.employees enable row level security;
 alter table public.event_logs enable row level security;
 alter table public.access_codes enable row level security;
@@ -115,6 +135,26 @@ create policy "development employees anon update"
   to anon, authenticated
   using (true)
   with check (true);
+
+-- DEVELOPMENT ONLY: Temporary Storage policies for employee photo uploads.
+-- The employee-photos bucket is public so visitor cards can render public URLs.
+-- TODO: Before production, restrict uploads to authenticated admin users only.
+-- TODO: Review whether public photo reads are acceptable for production.
+drop policy if exists "development employee photos public read"
+  on storage.objects;
+create policy "development employee photos public read"
+  on storage.objects
+  for select
+  to anon, authenticated
+  using (bucket_id = 'employee-photos');
+
+drop policy if exists "development employee photos authenticated upload"
+  on storage.objects;
+create policy "development employee photos authenticated upload"
+  on storage.objects
+  for insert
+  to authenticated
+  with check (bucket_id = 'employee-photos');
 
 -- TODO: Add least-privilege RLS policies for event_logs and access_codes once
 -- the authentication model is defined. In particular, do not expose

@@ -35,7 +35,7 @@ type EmployeeManagerProps = {
 
 function EmployeeFields({ employee }: { employee?: Employee }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
       <div className="space-y-2">
         <Label htmlFor={employee ? `name-${employee.id}` : "name-new"}>
           Name
@@ -108,6 +108,32 @@ function EmployeeFields({ employee }: { employee?: Employee }) {
             defaultValue={employee?.image_url ?? ""}
             className="h-11 rounded-[8px] pl-9"
             placeholder="https://..."
+          />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={employee ? `photo-${employee.id}` : "photo-new"}>
+          Photo upload
+        </Label>
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-neutral-200 bg-neutral-50 text-neutral-400">
+            {employee?.image_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={employee.image_url}
+                alt=""
+                className="size-full object-cover"
+              />
+            ) : (
+              <ImageIcon className="size-5" aria-hidden="true" />
+            )}
+          </div>
+          <Input
+            id={employee ? `photo-${employee.id}` : "photo-new"}
+            name="photo"
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="h-11 rounded-[8px] text-sm"
           />
         </div>
       </div>
@@ -196,7 +222,11 @@ export function EmployeeManager({
             </CardTitle>
           </CardHeader>
           <CardContent className="px-6 pb-6">
-            <form action={createEmployeeAction} className="space-y-5">
+            <form
+              action={createEmployeeAction}
+              encType="multipart/form-data"
+              className="space-y-5"
+            >
               <EmployeeFields />
               <Button
                 type="submit"
@@ -216,7 +246,11 @@ export function EmployeeManager({
               className="rounded-[8px] border-neutral-200 bg-white shadow-sm"
             >
               <CardContent className="p-5 sm:p-6">
-                <form action={updateEmployeeAction} className="space-y-5">
+                <form
+                  action={updateEmployeeAction}
+                  encType="multipart/form-data"
+                  className="space-y-5"
+                >
                   <input type="hidden" name="id" value={employee.id} />
                   <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                     <div className="min-w-0">

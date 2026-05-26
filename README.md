@@ -15,6 +15,23 @@ Do not add admin passwords to this repository or to public environment
 variables. The app only needs `NEXT_PUBLIC_SUPABASE_URL` and either
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
 
+## Employee photo storage setup
+
+Employee photos are uploaded to Supabase Storage, not to the Next.js `public`
+folder. Create the bucket in Supabase before uploading photos:
+
+1. Open the Supabase Dashboard.
+2. Go to Storage.
+3. Click New bucket.
+4. Name it `employee-photos`.
+5. Set it to public so visitor cards can render the stored public URLs.
+6. Set a 2 MB file size limit and allow `image/jpeg`, `image/png`, and
+   `image/webp`.
+
+For development, the schema includes Storage policies that allow public reads
+from `employee-photos` and authenticated uploads to that bucket. Production
+upload access must be restricted to authenticated admin users only.
+
 ## Getting Started
 
 First, run the development server:

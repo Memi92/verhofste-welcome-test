@@ -8,6 +8,10 @@ import {
   setEmployeeActive,
   updateEmployee,
 } from "@/lib/supabaseEmployees";
+import {
+  getEmployeePhotoFile,
+  uploadEmployeePhoto,
+} from "@/lib/supabaseEmployeePhotos";
 import { createClient } from "@/lib/supabase/server";
 import type { EmployeeFormValues } from "@/types";
 
@@ -27,7 +31,7 @@ function getEmployeeValues(formData: FormData): EmployeeFormValues {
   };
 }
 
-function finish(result: { ok: boolean; message: string }) {
+function finish(result: { ok: boolean; message: string }): never {
   revalidatePath("/admin");
   revalidatePath("/visitor");
 
@@ -36,13 +40,39 @@ function finish(result: { ok: boolean; message: string }) {
 }
 
 export async function createEmployeeAction(formData: FormData) {
-  const result = await createEmployee(getEmployeeValues(formData));
+  const values = getEmployeeValues(formData);
+  const photo = getEmployeePhotoFile(formData);
+
+  if (photo) {
+    const uploadResult = await uploadEmployeePhoto(photo);
+
+    if (!uploadResult.ok) {
+      finish(uploadResult);
+    }
+
+    values.image_url = uploadResult.publicUrl;
+  }
+
+  const result = await createEmployee(values);
   finish(result);
 }
 
 export async function updateEmployeeAction(formData: FormData) {
   const id = getString(formData, "id");
-  const result = await updateEmployee(id, getEmployeeValues(formData));
+  const values = getEmployeeValues(formData);
+  const photo = getEmployeePhotoFile(formData);
+
+  if (photo) {
+    const uploadResult = await uploadEmployeePhoto(photo, id);
+
+    if (!uploadResult.ok) {
+      finish(uploadResult);
+    }
+
+    values.image_url = uploadResult.publicUrl;
+  }
+
+  const result = await updateEmployee(id, values);
   finish(result);
 }
 
