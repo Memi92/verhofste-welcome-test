@@ -13,7 +13,7 @@ import {
 const employeeActions = [
   {
     title: "Open door",
-    description: "Use the employee PIN access placeholder.",
+    description: "Enter your employee PIN to request door access.",
     href: "/pin",
     icon: KeyRound,
   },

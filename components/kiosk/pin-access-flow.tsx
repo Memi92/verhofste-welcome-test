@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { startTransition, useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import {
+  startTransition,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { ArrowLeft, CheckCircle2, Delete, KeyRound, XCircle } from "lucide-react";
 
 import { submitPinAction, type PinSubmitResult } from "@/app/pin/actions";
@@ -22,37 +29,85 @@ const keypadRows = [
   ["Clear", "0", "Back"],
 ];
 
+const SUCCESS_RETURN_TIMEOUT_SECONDS = 5;
+
+type PinFlowStatus = "idle" | "checking" | "success" | "error";
+
 export function PinAccessFlow() {
+  const router = useRouter();
   const [pin, setPin] = useState("");
   const [result, setResult] = useState<PinSubmitResult | null>(null);
+  const [status, setStatus] = useState<PinFlowStatus>("idle");
+  const [successCountdown, setSuccessCountdown] = useState(
+    SUCCESS_RETURN_TIMEOUT_SECONDS
+  );
   const [isPending, startSubmitTransition] = useTransition();
+  const submitLockRef = useRef(false);
+  const isChecking = status === "checking" || isPending;
+  const isSuccess = status === "success";
+  const isInputDisabled = isChecking || isSuccess;
 
   function appendDigit(digit: string) {
+    if (isInputDisabled) {
+      return;
+    }
+
     setResult(null);
+    setStatus("idle");
     setPin((current) => (current.length < 4 ? `${current}${digit}` : current));
   }
 
   function clearPin() {
+    if (isInputDisabled) {
+      return;
+    }
+
     setPin("");
     setResult(null);
+    setStatus("idle");
   }
 
   function removeLastDigit() {
+    if (isInputDisabled) {
+      return;
+    }
+
     setResult(null);
+    setStatus("idle");
     setPin((current) => current.slice(0, -1));
   }
 
   function submitPin(pinToSubmit = pin) {
-    if (pinToSubmit.length !== 4 || isPending) {
+    if (pinToSubmit.length !== 4 || isInputDisabled || submitLockRef.current) {
       return;
     }
 
-    startSubmitTransition(async () => {
-      const actionResult = await submitPinAction(pinToSubmit);
-      setResult(actionResult);
+    submitLockRef.current = true;
+    setStatus("checking");
 
-      if (!actionResult.ok) {
+    startSubmitTransition(async () => {
+      try {
+        const actionResult = await submitPinAction(pinToSubmit);
+        setResult(actionResult);
+
+        if (actionResult.ok) {
+          setStatus("success");
+          setSuccessCountdown(SUCCESS_RETURN_TIMEOUT_SECONDS);
+          setPin("");
+          return;
+        }
+
+        submitLockRef.current = false;
+        setStatus("error");
         setPin("");
+      } catch {
+        submitLockRef.current = false;
+        setStatus("error");
+        setPin("");
+        setResult({
+          ok: false,
+          message: "PIN validation failed.",
+        });
       }
     });
   }
@@ -78,6 +133,10 @@ export function PinAccessFlow() {
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
+      if (isInputDisabled) {
+        return;
+      }
+
       if (/^\d$/.test(event.key)) {
         handleKeyPress(event.key);
       }
@@ -101,6 +160,25 @@ export function PinAccessFlow() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   });
+
+  useEffect(() => {
+    if (status !== "success") {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (successCountdown <= 1) {
+        router.push("/");
+        return;
+      }
+
+      setSuccessCountdown(successCountdown - 1);
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [router, status, successCountdown]);
 
   return (
     <main className="min-h-dvh bg-stone-50 px-5 py-6 text-neutral-950 sm:px-8">
@@ -162,6 +240,11 @@ export function PinAccessFlow() {
                     ? `Welcome, ${result.employeeName}. ${result.message}`
                     : result.message}
                 </AlertDescription>
+                {result.ok ? (
+                  <p className="mt-2 text-sm text-emerald-800">
+                    Going back to start in {successCountdown}s
+                  </p>
+                ) : null}
               </Alert>
             ) : null}
 
@@ -174,7 +257,7 @@ export function PinAccessFlow() {
                       type="button"
                       variant={/^\d$/.test(value) ? "outline" : "secondary"}
                       className="h-16 rounded-[8px] text-xl font-semibold"
-                      disabled={isPending}
+                      disabled={isInputDisabled}
                       onClick={() => handleKeyPress(value)}
                     >
                       {value === "Back" ? (
@@ -188,14 +271,24 @@ export function PinAccessFlow() {
               ))}
             </div>
 
-            <Button
-              type="button"
-              className="h-16 w-full rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
-              disabled={pin.length !== 4 || isPending}
-              onClick={() => submitPin()}
-            >
-              {isPending ? "Checking PIN..." : "Open"}
-            </Button>
+            {isSuccess ? (
+              <div className="flex h-16 w-full items-center justify-center rounded-[8px] bg-emerald-50 text-lg font-semibold text-emerald-900 ring-1 ring-emerald-200">
+                Access granted
+              </div>
+            ) : (
+              <Button
+                type="button"
+                className="h-16 w-full rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
+                disabled={pin.length !== 4 || isChecking}
+                onClick={() => submitPin()}
+              >
+                {isChecking
+                  ? "Checking PIN..."
+                  : status === "error"
+                    ? "Invalid PIN"
+                    : "Open"}
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
