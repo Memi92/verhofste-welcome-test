@@ -35,19 +35,18 @@ export function KioskStartScreen() {
         </Badge>
       </header>
 
-      <section className="mx-auto flex w-full max-w-5xl flex-col items-center justify-center px-6 py-10 text-center sm:px-10">
+      <section className="mx-auto flex w-full max-w-10xl flex-col items-center justify-center px-6 py-10 text-center sm:px-10">
         <div className="mb-8 flex size-20 items-center justify-center rounded-[8px] border border-neutral-200 bg-white shadow-sm">
           <CalendarCheck
             className="size-10 text-emerald-700"
             aria-hidden="true"
           />
         </div>
-        <h1 className="max-w-3xl text-5xl font-semibold leading-tight text-neutral-950 md:text-7xl">
-          Verhofsté Reception
+        <h1 className="max-w-5xl text-5xl font-semibold leading-tight text-neutral-950 md:text-7xl">
+          Welcome to Verhofsté nv
         </h1>
         <p className="mt-6 max-w-2xl text-xl leading-8 text-neutral-600 md:text-2xl md:leading-10">
-          Welcome. Select your host and we will notify them that you have
-          arrived.
+          Please choose an option below..
         </p>
         <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
           <Button
