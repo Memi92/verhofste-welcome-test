@@ -5,6 +5,7 @@ export type Employee = {
   function: string;
   phone_extension: string;
   image_url: string | null;
+  has_active_pin: boolean;
   is_active: boolean;
   created_at: string;
   updated_at: string | null;

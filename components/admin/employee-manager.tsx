@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Image as ImageIcon,
+  KeyRound,
   LogOut,
   RotateCcw,
   Save,
@@ -23,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { formatBrusselsDateTime } from "@/lib/formatDate";
 import type { Employee } from "@/types";
 
 type EmployeeManagerProps = {
@@ -35,7 +37,7 @@ type EmployeeManagerProps = {
 
 function EmployeeFields({ employee }: { employee?: Employee }) {
   return (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
       <div className="space-y-2">
         <Label htmlFor={employee ? `name-${employee.id}` : "name-new"}>
           Name
@@ -137,6 +139,40 @@ function EmployeeFields({ employee }: { employee?: Employee }) {
           />
         </div>
       </div>
+      <div className="space-y-2">
+        <Label htmlFor={employee ? `pin-${employee.id}` : "pin-new"}>
+          PIN code
+        </Label>
+        <div className="relative">
+          <KeyRound
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-neutral-400"
+            aria-hidden="true"
+          />
+          <Input
+            id={employee ? `pin-${employee.id}` : "pin-new"}
+            name="pin_code"
+            type="password"
+            inputMode="numeric"
+            pattern="[0-9]{4}"
+            maxLength={4}
+            autoComplete="off"
+            className="h-11 rounded-[8px] pl-9"
+            placeholder="4 digits"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmployeeTimestamps({ employee }: { employee: Employee }) {
+  const createdAt = formatBrusselsDateTime(employee.created_at);
+  const updatedAt = formatBrusselsDateTime(employee.updated_at);
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-neutral-500">
+      {createdAt ? <span>Created {createdAt}</span> : null}
+      {updatedAt ? <span>Updated {updatedAt}</span> : null}
     </div>
   );
 }
@@ -224,7 +260,6 @@ export function EmployeeManager({
           <CardContent className="px-6 pb-6">
             <form
               action={createEmployeeAction}
-              encType="multipart/form-data"
               className="space-y-5"
             >
               <EmployeeFields />
@@ -248,7 +283,6 @@ export function EmployeeManager({
               <CardContent className="p-5 sm:p-6">
                 <form
                   action={updateEmployeeAction}
-                  encType="multipart/form-data"
                   className="space-y-5"
                 >
                   <input type="hidden" name="id" value={employee.id} />
@@ -264,10 +298,19 @@ export function EmployeeManager({
                         >
                           {employee.is_active ? "Active" : "Inactive"}
                         </Badge>
+                        <Badge
+                          variant={employee.has_active_pin ? "secondary" : "outline"}
+                          className="rounded-[8px]"
+                        >
+                          {employee.has_active_pin
+                            ? "PIN configured"
+                            : "No PIN"}
+                        </Badge>
                       </div>
                       <p className="mt-1 break-words text-sm text-neutral-600">
                         {employee.department} - {employee.function}
                       </p>
+                      <EmployeeTimestamps employee={employee} />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <Button

@@ -12,6 +12,11 @@ import {
   getEmployeePhotoFile,
   uploadEmployeePhoto,
 } from "@/lib/supabaseEmployeePhotos";
+import {
+  getPinFromFormData,
+  setEmployeePin,
+  validateOptionalPin,
+} from "@/lib/supabaseEmployeePins";
 import { createClient } from "@/lib/supabase/server";
 import type { EmployeeFormValues } from "@/types";
 
@@ -42,6 +47,12 @@ function finish(result: { ok: boolean; message: string }): never {
 export async function createEmployeeAction(formData: FormData) {
   const values = getEmployeeValues(formData);
   const photo = getEmployeePhotoFile(formData);
+  const pin = getPinFromFormData(formData);
+  const pinValidationError = validateOptionalPin(pin);
+
+  if (pinValidationError) {
+    finish({ ok: false, message: pinValidationError });
+  }
 
   if (photo) {
     const uploadResult = await uploadEmployeePhoto(photo);
@@ -54,6 +65,14 @@ export async function createEmployeeAction(formData: FormData) {
   }
 
   const result = await createEmployee(values);
+  if (result.ok && pin && result.employeeId) {
+    const pinResult = await setEmployeePin(result.employeeId, pin);
+
+    if (!pinResult.ok) {
+      finish(pinResult);
+    }
+  }
+
   finish(result);
 }
 
@@ -61,6 +80,12 @@ export async function updateEmployeeAction(formData: FormData) {
   const id = getString(formData, "id");
   const values = getEmployeeValues(formData);
   const photo = getEmployeePhotoFile(formData);
+  const pin = getPinFromFormData(formData);
+  const pinValidationError = validateOptionalPin(pin);
+
+  if (pinValidationError) {
+    finish({ ok: false, message: pinValidationError });
+  }
 
   if (photo) {
     const uploadResult = await uploadEmployeePhoto(photo, id);
@@ -73,6 +98,14 @@ export async function updateEmployeeAction(formData: FormData) {
   }
 
   const result = await updateEmployee(id, values);
+  if (result.ok && pin) {
+    const pinResult = await setEmployeePin(id, pin);
+
+    if (!pinResult.ok) {
+      finish(pinResult);
+    }
+  }
+
   finish(result);
 }
 

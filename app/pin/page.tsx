@@ -26,8 +26,8 @@ export default function PinPage() {
             Employee PIN access
           </CardTitle>
           <CardDescription className="text-base leading-7">
-            The mocked PIN keypad and openDoorMock() action will be implemented
-            after the visitor appointment flow is accepted.
+            PIN entry will validate employee access codes in a later milestone.
+            Door opening remains mocked and is not connected to hardware yet.
           </CardDescription>
         </CardHeader>
         <CardContent className="px-8 pb-8">

@@ -23,12 +23,20 @@ type EmployeeLoadResult = {
 type MutationResult = {
   ok: boolean;
   message: string;
+  employeeId?: Employee["id"];
+};
+
+type EmployeePinRow = {
+  employee_id: string;
 };
 
 const employeeSelect =
   "id,name,department,function,phone_extension,image_url,is_active,created_at,updated_at";
 
-function normalizeEmployee(row: EmployeeRow): Employee {
+function normalizeEmployee(
+  row: EmployeeRow,
+  employeeIdsWithPin = new Set<string>()
+): Employee {
   return {
     id: row.id,
     name: row.name,
@@ -36,10 +44,31 @@ function normalizeEmployee(row: EmployeeRow): Employee {
     function: row.function,
     phone_extension: row.phone_extension,
     image_url: row.image_url,
+    has_active_pin: employeeIdsWithPin.has(row.id),
     is_active: row.is_active,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function getEmployeeIdsWithActivePins() {
+  const supabase = await createClient();
+
+  if (!supabase) {
+    return new Set<string>();
+  }
+
+  const { data, error } = await supabase
+    .from("employee_access_codes")
+    .select("employee_id")
+    .eq("is_active", true)
+    .returns<EmployeePinRow[]>();
+
+  if (error) {
+    return new Set<string>();
+  }
+
+  return new Set((data ?? []).map((row) => row.employee_id));
 }
 
 function cleanEmployeeValues(values: EmployeeFormValues): EmployeeFormValues {
@@ -97,8 +126,10 @@ export async function getEmployees(
     };
   }
 
+  const employeeIdsWithPin = await getEmployeeIdsWithActivePins();
+
   return {
-    employees: (data ?? []).map(normalizeEmployee),
+    employees: (data ?? []).map((row) => normalizeEmployee(row, employeeIdsWithPin)),
     source: "supabase",
   };
 }
@@ -125,16 +156,20 @@ export async function createEmployee(
     };
   }
 
-  const { error } = await supabase.from("employees").insert({
-    ...cleanEmployeeValues(values),
-    is_active: true,
-  });
+  const { data, error } = await supabase
+    .from("employees")
+    .insert({
+      ...cleanEmployeeValues(values),
+      is_active: true,
+    })
+    .select("id")
+    .single<{ id: Employee["id"] }>();
 
   if (error) {
     return { ok: false, message: error.message };
   }
 
-  return { ok: true, message: "Employee created." };
+  return { ok: true, message: "Employee created.", employeeId: data.id };
 }
 
 export async function updateEmployee(

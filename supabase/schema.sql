@@ -51,6 +51,31 @@ create index if not exists employees_function_idx
 create index if not exists employees_department_idx
   on public.employees (department);
 
+create table if not exists public.employee_access_codes (
+  id uuid primary key default gen_random_uuid(),
+  employee_id uuid not null references public.employees(id) on delete cascade,
+  pin_hash text not null,
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists employee_access_codes_one_active_per_employee_idx
+  on public.employee_access_codes (employee_id)
+  where is_active;
+
+create index if not exists employee_access_codes_employee_id_idx
+  on public.employee_access_codes (employee_id);
+
+create index if not exists employee_access_codes_is_active_idx
+  on public.employee_access_codes (is_active);
+
+comment on table public.employee_access_codes is
+  'Stores hashed employee PIN codes only. Never store raw PIN codes.';
+
+comment on column public.employee_access_codes.pin_hash is
+  'Salted hash of the employee PIN. Raw PIN values must never be stored.';
+
 create table if not exists public.event_logs (
   id uuid primary key default gen_random_uuid(),
   event_type text not null,
@@ -103,6 +128,7 @@ set
   allowed_mime_types = excluded.allowed_mime_types;
 
 alter table public.employees enable row level security;
+alter table public.employee_access_codes enable row level security;
 alter table public.event_logs enable row level security;
 alter table public.access_codes enable row level security;
 
@@ -133,6 +159,37 @@ create policy "development employees anon update"
   on public.employees
   for update
   to anon, authenticated
+  using (true)
+  with check (true);
+
+-- DEVELOPMENT ONLY: Temporary employee PIN policies for admin testing.
+-- PIN values are stored only as salted hashes in pin_hash.
+-- TODO: Before production, restrict all employee_access_codes access to
+-- authenticated admin users only. Visitor PIN validation should use a
+-- least-privilege server-side path and must never expose pin_hash values to
+-- browsers.
+drop policy if exists "development employee access codes authenticated select"
+  on public.employee_access_codes;
+create policy "development employee access codes authenticated select"
+  on public.employee_access_codes
+  for select
+  to authenticated
+  using (true);
+
+drop policy if exists "development employee access codes authenticated insert"
+  on public.employee_access_codes;
+create policy "development employee access codes authenticated insert"
+  on public.employee_access_codes
+  for insert
+  to authenticated
+  with check (true);
+
+drop policy if exists "development employee access codes authenticated update"
+  on public.employee_access_codes;
+create policy "development employee access codes authenticated update"
+  on public.employee_access_codes
+  for update
+  to authenticated
   using (true)
   with check (true);
 
