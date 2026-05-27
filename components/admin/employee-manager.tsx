@@ -24,7 +24,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { EventLogsViewer } from "@/components/admin/event-logs-viewer";
 import { formatBrusselsDateTime } from "@/lib/formatDate";
+import type { EventLogReadable } from "@/lib/supabaseEventLogs";
 import type { Employee } from "@/types";
 
 type EmployeeManagerProps = {
@@ -33,6 +36,14 @@ type EmployeeManagerProps = {
   loadError?: string;
   savedMessage?: string;
   errorMessage?: string;
+  eventLogs: EventLogReadable[];
+  eventLogsHasMore: boolean;
+  eventLogsError?: string;
+  selectedTab?: string;
+  selectedEventType?: string;
+  eventLogsFromDate?: string;
+  eventLogsToDate?: string;
+  eventLogsLimit?: number;
 };
 
 function EmployeeFields({ employee }: { employee?: Employee }) {
@@ -183,6 +194,14 @@ export function EmployeeManager({
   loadError,
   savedMessage,
   errorMessage,
+  eventLogs,
+  eventLogsHasMore,
+  eventLogsError,
+  selectedTab,
+  selectedEventType,
+  eventLogsFromDate,
+  eventLogsToDate,
+  eventLogsLimit,
 }: EmployeeManagerProps) {
   return (
     <main className="min-h-dvh bg-stone-50 px-5 py-8 text-neutral-950 sm:px-8">
@@ -251,107 +270,132 @@ export function EmployeeManager({
           </Alert>
         ) : null}
 
-        <Card className="rounded-[8px] border-neutral-200 bg-white shadow-sm">
-          <CardHeader className="p-6">
-            <CardTitle className="text-2xl font-semibold">
-              Add employee
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-6 pb-6">
-            <form
-              action={createEmployeeAction}
-              className="space-y-5"
-            >
-              <EmployeeFields />
-              <Button
-                type="submit"
-                className="h-11 rounded-[8px] bg-neutral-950 text-white hover:bg-neutral-800"
-              >
-                <UserPlus className="size-4" aria-hidden="true" />
-                Create employee
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue={selectedTab === "logs" ? "logs" : "employees"}>
+          <TabsList className="h-10 rounded-[8px]">
+            <TabsTrigger value="employees" className="rounded-[8px] px-4">
+              Employees
+            </TabsTrigger>
+            <TabsTrigger value="logs" className="rounded-[8px] px-4">
+              Event logs
+            </TabsTrigger>
+          </TabsList>
 
-        <section className="space-y-4" aria-label="Employees">
-          {employees.map((employee) => (
-            <Card
-              key={employee.id}
-              className="rounded-[8px] border-neutral-200 bg-white shadow-sm"
-            >
-              <CardContent className="p-5 sm:p-6">
-                <form
-                  action={updateEmployeeAction}
-                  className="space-y-5"
-                >
-                  <input type="hidden" name="id" value={employee.id} />
-                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="break-words text-xl font-semibold">
-                          {employee.name}
-                        </h2>
-                        <Badge
-                          variant={employee.is_active ? "secondary" : "outline"}
-                          className="rounded-[8px]"
-                        >
-                          {employee.is_active ? "Active" : "Inactive"}
-                        </Badge>
-                        <Badge
-                          variant={employee.has_active_pin ? "secondary" : "outline"}
-                          className="rounded-[8px]"
-                        >
-                          {employee.has_active_pin
-                            ? "PIN configured"
-                            : "No PIN"}
-                        </Badge>
-                      </div>
-                      <p className="mt-1 break-words text-sm text-neutral-600">
-                        {employee.department} - {employee.function}
-                      </p>
-                      <EmployeeTimestamps employee={employee} />
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="submit"
-                        variant="outline"
-                        className="h-10 rounded-[8px]"
-                      >
-                        <Save className="size-4" aria-hidden="true" />
-                        Save
-                      </Button>
-                    </div>
-                  </div>
-                  <EmployeeFields employee={employee} />
-                </form>
-
-                <form
-                  action={
-                    employee.is_active
-                      ? deactivateEmployeeAction
-                      : reactivateEmployeeAction
-                  }
-                  className="mt-4 border-t border-neutral-100 pt-4"
-                >
-                  <input type="hidden" name="id" value={employee.id} />
+          <TabsContent value="employees" className="space-y-4">
+            <Card className="rounded-[8px] border-neutral-200 bg-white shadow-sm">
+              <CardHeader className="p-6">
+                <CardTitle className="text-2xl font-semibold">
+                  Add employee
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-6 pb-6">
+                <form action={createEmployeeAction} className="space-y-5">
+                  <EmployeeFields />
                   <Button
                     type="submit"
-                    variant={employee.is_active ? "destructive" : "outline"}
-                    className="h-10 rounded-[8px]"
+                    className="h-11 rounded-[8px] bg-neutral-950 text-white hover:bg-neutral-800"
                   >
-                    {employee.is_active ? (
-                      <UserMinus className="size-4" aria-hidden="true" />
-                    ) : (
-                      <RotateCcw className="size-4" aria-hidden="true" />
-                    )}
-                    {employee.is_active ? "Deactivate" : "Reactivate"}
+                    <UserPlus className="size-4" aria-hidden="true" />
+                    Create employee
                   </Button>
                 </form>
               </CardContent>
             </Card>
-          ))}
-        </section>
+
+            <section className="space-y-4" aria-label="Employees">
+              {employees.map((employee) => (
+                <Card
+                  key={employee.id}
+                  className="rounded-[8px] border-neutral-200 bg-white shadow-sm"
+                >
+                  <CardContent className="p-5 sm:p-6">
+                    <form action={updateEmployeeAction} className="space-y-5">
+                      <input type="hidden" name="id" value={employee.id} />
+                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h2 className="break-words text-xl font-semibold">
+                              {employee.name}
+                            </h2>
+                            <Badge
+                              variant={
+                                employee.is_active ? "secondary" : "outline"
+                              }
+                              className="rounded-[8px]"
+                            >
+                              {employee.is_active ? "Active" : "Inactive"}
+                            </Badge>
+                            <Badge
+                              variant={
+                                employee.has_active_pin
+                                  ? "secondary"
+                                  : "outline"
+                              }
+                              className="rounded-[8px]"
+                            >
+                              {employee.has_active_pin
+                                ? "PIN configured"
+                                : "No PIN"}
+                            </Badge>
+                          </div>
+                          <p className="mt-1 break-words text-sm text-neutral-600">
+                            {employee.department} - {employee.function}
+                          </p>
+                          <EmployeeTimestamps employee={employee} />
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="submit"
+                            variant="outline"
+                            className="h-10 rounded-[8px]"
+                          >
+                            <Save className="size-4" aria-hidden="true" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                      <EmployeeFields employee={employee} />
+                    </form>
+
+                    <form
+                      action={
+                        employee.is_active
+                          ? deactivateEmployeeAction
+                          : reactivateEmployeeAction
+                      }
+                      className="mt-4 border-t border-neutral-100 pt-4"
+                    >
+                      <input type="hidden" name="id" value={employee.id} />
+                      <Button
+                        type="submit"
+                        variant={employee.is_active ? "destructive" : "outline"}
+                        className="h-10 rounded-[8px]"
+                      >
+                        {employee.is_active ? (
+                          <UserMinus className="size-4" aria-hidden="true" />
+                        ) : (
+                          <RotateCcw className="size-4" aria-hidden="true" />
+                        )}
+                        {employee.is_active ? "Deactivate" : "Reactivate"}
+                      </Button>
+                    </form>
+                  </CardContent>
+                </Card>
+              ))}
+            </section>
+          </TabsContent>
+
+          <TabsContent value="logs">
+            <EventLogsViewer
+              logs={eventLogs}
+              hasMore={eventLogsHasMore}
+              error={eventLogsError}
+              selectedEventType={selectedEventType}
+              fromDate={eventLogsFromDate}
+              toDate={eventLogsToDate}
+              limit={eventLogsLimit}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </main>
   );

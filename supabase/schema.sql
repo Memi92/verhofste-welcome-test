@@ -92,6 +92,23 @@ create index if not exists event_logs_created_at_idx
 create index if not exists event_logs_event_type_idx
   on public.event_logs (event_type);
 
+create or replace view public.event_logs_readable as
+select
+  event_logs.id,
+  event_logs.created_at,
+  event_logs.event_type,
+  event_logs.message,
+  event_logs.employee_id,
+  employees.name as employee_name,
+  employees.department as employee_department,
+  employees."function" as employee_function,
+  employees.phone_extension as employee_phone_extension
+from public.event_logs
+left join public.employees
+  on employees.id = event_logs.employee_id;
+
+grant select on public.event_logs_readable to authenticated;
+
 create table if not exists public.access_codes (
   id uuid primary key default gen_random_uuid(),
   label text not null,
@@ -202,6 +219,14 @@ create policy "development event logs anon insert"
   for insert
   to anon, authenticated
   with check (true);
+
+drop policy if exists "development event logs authenticated select"
+  on public.event_logs;
+create policy "development event logs authenticated select"
+  on public.event_logs
+  for select
+  to authenticated
+  using (true);
 
 -- DEVELOPMENT ONLY: Temporary Storage policies for employee photo uploads.
 -- The employee-photos bucket is public so visitor cards can render public URLs.

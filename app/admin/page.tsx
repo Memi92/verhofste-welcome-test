@@ -1,5 +1,6 @@
 import { EmployeeManager } from "@/components/admin/employee-manager";
 import { createClient } from "@/lib/supabase/server";
+import { getRecentEventLogs } from "@/lib/supabaseEventLogs";
 import { getEmployees } from "@/lib/supabaseEmployees";
 import { redirect } from "next/navigation";
 
@@ -7,6 +8,11 @@ type AdminPageProps = {
   searchParams: Promise<{
     saved?: string;
     error?: string;
+    tab?: string;
+    eventType?: string;
+    from?: string;
+    to?: string;
+    limit?: string;
   }>;
 };
 
@@ -27,8 +33,18 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
     redirect("/admin/login");
   }
 
-  const [{ employees, source, error: loadError }, params] =
-    await Promise.all([getEmployees(false), searchParams]);
+  const params = await searchParams;
+  const eventLogLimit = params.limit ? Number(params.limit) : undefined;
+  const [{ employees, source, error: loadError }, eventLogsResult] =
+    await Promise.all([
+      getEmployees(false),
+      getRecentEventLogs({
+        eventType: params.eventType,
+        fromDate: params.from,
+        toDate: params.to,
+        limit: eventLogLimit,
+      }),
+    ]);
 
   return (
     <EmployeeManager
@@ -37,6 +53,14 @@ export default async function AdminPage({ searchParams }: AdminPageProps) {
       loadError={loadError}
       savedMessage={params.saved}
       errorMessage={params.error}
+      eventLogs={eventLogsResult.logs}
+      eventLogsHasMore={eventLogsResult.hasMore}
+      eventLogsError={eventLogsResult.error}
+      selectedTab={params.tab}
+      selectedEventType={params.eventType}
+      eventLogsFromDate={params.from}
+      eventLogsToDate={params.to}
+      eventLogsLimit={eventLogLimit}
     />
   );
 }
