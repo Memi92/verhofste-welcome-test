@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { isConfiguredAdminUser } from "@/lib/adminAuth";
 import { createClient } from "@/lib/supabase/server";
 
 type AdminLoginPageProps = {
@@ -32,7 +33,7 @@ export default async function AdminLoginPage({
       data: { user },
     } = await supabase.auth.getUser();
 
-    if (user) {
+    if (isConfiguredAdminUser(user)) {
       redirect("/admin");
     }
   }

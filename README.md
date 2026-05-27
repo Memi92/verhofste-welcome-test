@@ -1,19 +1,70 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Access model and environment variables
+
+The kiosk public routes are:
+
+- `/`
+- `/visitor`
+- `/employee`
+- `/pin`
+
+The protected route is `/admin`.
+
+Visitors do not log in. They use `/visitor` to select and mock-call an
+employee. Employees do not log in. They use `/employee` and `/pin` to enter an
+employee PIN. The PIN validation stays server-side and PIN hashes must never be
+sent to the browser.
+
+The admin portal uses Supabase Auth email/password login plus one server-only
+allowlist value: `ADMIN_EMAIL`. There should be exactly one admin user.
+
+Required Supabase client variables:
+
+```bash
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+```
+
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` is also supported for compatibility if the
+publishable key is not set.
+
+Required server-only admin variable:
+
+```bash
+ADMIN_EMAIL=admin@example.com
+```
+
+Do not prefix `ADMIN_EMAIL` with `NEXT_PUBLIC`. Do not expose service role keys
+to the browser.
+
 ## Supabase admin user setup
 
-The admin portal uses Supabase Auth email/password login. Create the first
-admin user manually in Supabase:
+Create exactly one admin user manually in Supabase:
 
 1. Open the Supabase Dashboard.
 2. Go to Authentication > Users.
 3. Click Add user.
 4. Enter the admin email and password.
-5. Use that email and password at `/admin/login`.
+5. Set `ADMIN_EMAIL` in `.env.local` to that exact email address.
+6. Later, set the same `ADMIN_EMAIL` value in Vercel environment variables.
+7. Use that email and password at `/admin/login`.
 
 Do not add admin passwords to this repository or to public environment
 variables. The app only needs `NEXT_PUBLIC_SUPABASE_URL` and either
-`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` in
+the browser. `ADMIN_EMAIL` is read only on the server.
+
+The development RLS policies in `supabase/schema.sql` are intentionally broad
+so the current kiosk/admin workflow remains easy to test. Review and tighten
+them before production:
+
+- public users should read only active employees
+- public/kiosk flows may insert event logs but must not read all logs
+- only the configured admin should manage employees and photos
+- only the configured admin or server-side PIN validation should access
+  `employee_access_codes`
+- only the configured admin should read event logs
 
 ## Employee photo storage setup
 

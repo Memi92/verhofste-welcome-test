@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { isConfiguredAdminUser } from "@/lib/adminAuth";
 import { createClient } from "@/lib/supabase/server";
 
 function getString(formData: FormData, key: string) {
@@ -34,6 +35,17 @@ export async function loginAction(formData: FormData) {
 
   if (error) {
     redirect(`/admin/login?error=${encodeURIComponent(error.message)}`);
+  }
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!isConfiguredAdminUser(user)) {
+    await supabase.auth.signOut();
+    redirect(
+      "/admin/login?error=Access%20denied.%20This%20account%20is%20not%20the%20configured%20admin%20user."
+    );
   }
 
   revalidatePath("/", "layout");

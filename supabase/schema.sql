@@ -151,8 +151,10 @@ alter table public.access_codes enable row level security;
 -- DEVELOPMENT ONLY: Temporary employee policies for local kiosk/admin testing.
 -- These policies intentionally allow both anonymous visitor reads and
 -- authenticated admin writes during development.
+-- Intended access model: /visitor remains public, /pin remains public, and
+-- /admin is limited in the app to the single server-configured ADMIN_EMAIL.
 -- TODO: Before production, restrict INSERT and UPDATE to authenticated admin
--- users only.
+-- users only. For this project, that means the single configured admin user.
 -- TODO: Public read access is a temporary development choice. Production
 -- visitor reads should expose only active employees, preferably through a
 -- least-privilege policy or view that does not leak inactive employee rows.
@@ -184,6 +186,8 @@ create policy "development employees anon update"
 -- authenticated admin users only and move visitor PIN validation behind a
 -- least-privilege server-side path/RPC. Never expose pin_hash values to
 -- browsers.
+-- TODO: The public kiosk PIN flow may validate submitted PINs server-side, but
+-- public clients must never be able to read employee_access_codes directly.
 drop policy if exists "development employee access codes authenticated select"
   on public.employee_access_codes;
 create policy "development employee access codes authenticated select"
@@ -210,8 +214,12 @@ create policy "development employee access codes authenticated update"
   with check (true);
 
 -- DEVELOPMENT ONLY: Temporary event logging policy for kiosk/admin testing.
--- TODO: Before production, restrict event log writes and add admin event log
--- review, rate limiting, and lockout handling for repeated failed PIN attempts.
+-- TODO: Before production, public/kiosk flows may insert event logs but must
+-- not read all logs.
+-- TODO: Before production, restrict event log reads to the single authenticated
+-- admin user only.
+-- TODO: Add admin event log review, rate limiting, and lockout handling for
+-- repeated failed PIN attempts.
 drop policy if exists "development event logs anon insert"
   on public.event_logs;
 create policy "development event logs anon insert"
@@ -230,7 +238,8 @@ create policy "development event logs authenticated select"
 
 -- DEVELOPMENT ONLY: Temporary Storage policies for employee photo uploads.
 -- The employee-photos bucket is public so visitor cards can render public URLs.
--- TODO: Before production, restrict uploads to authenticated admin users only.
+-- TODO: Before production, restrict uploads to the single authenticated admin
+-- user only.
 -- TODO: Review whether public photo reads are acceptable for production.
 drop policy if exists "development employee photos public read"
   on storage.objects;
@@ -248,6 +257,6 @@ create policy "development employee photos authenticated upload"
   to authenticated
   with check (bucket_id = 'employee-photos');
 
--- TODO: Add least-privilege RLS policies for event_logs and access_codes once
--- the authentication model is defined. In particular, do not expose
--- access_codes to anonymous clients.
+-- TODO: Add least-privilege RLS policies for access_codes before using it.
+-- access_codes is reserved for future generic access codes and must not be
+-- exposed to anonymous clients.

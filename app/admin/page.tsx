@@ -1,7 +1,11 @@
 import { EmployeeManager } from "@/components/admin/employee-manager";
-import { createClient } from "@/lib/supabase/server";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getAdminAccessState } from "@/lib/adminAuth";
 import { getRecentEventLogs } from "@/lib/supabaseEventLogs";
 import { getEmployees } from "@/lib/supabaseEmployees";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 type AdminPageProps = {
@@ -17,20 +21,39 @@ type AdminPageProps = {
 };
 
 export default async function AdminPage({ searchParams }: AdminPageProps) {
-  const supabase = await createClient();
+  const adminAccess = await getAdminAccessState();
 
-  if (!supabase) {
+  if (adminAccess.status === "missing_supabase") {
     redirect(
       "/admin/login?error=Supabase%20environment%20variables%20are%20not%20configured."
     );
   }
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
+  if (adminAccess.status === "unauthenticated") {
     redirect("/admin/login");
+  }
+
+  if (adminAccess.status !== "authorized") {
+    return (
+      <main className="flex min-h-dvh items-center justify-center bg-stone-50 p-6 text-neutral-950">
+        <Card className="w-full max-w-xl rounded-[8px] border-neutral-200 bg-white shadow-sm">
+          <CardHeader className="p-8">
+            <CardTitle className="text-3xl font-semibold">
+              Access denied
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5 px-8 pb-8">
+            <Alert variant="destructive" className="rounded-[8px] p-4">
+              <AlertTitle>Admin access restricted</AlertTitle>
+              <AlertDescription>{adminAccess.message}</AlertDescription>
+            </Alert>
+            <Button asChild className="h-12 rounded-[8px]">
+              <Link href="/admin/login">Back to admin login</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </main>
+    );
   }
 
   const params = await searchParams;

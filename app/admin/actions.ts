@@ -17,6 +17,7 @@ import {
   setEmployeePin,
   validateOptionalPin,
 } from "@/lib/supabaseEmployeePins";
+import { requireAdminAccess } from "@/lib/adminAuth";
 import { createClient } from "@/lib/supabase/server";
 import type { EmployeeFormValues } from "@/types";
 
@@ -45,6 +46,12 @@ function finish(result: { ok: boolean; message: string }): never {
 }
 
 export async function createEmployeeAction(formData: FormData) {
+  const adminAccess = await requireAdminAccess();
+
+  if (!adminAccess.ok) {
+    finish(adminAccess);
+  }
+
   const values = getEmployeeValues(formData);
   const photo = getEmployeePhotoFile(formData);
   const pin = getPinFromFormData(formData);
@@ -77,6 +84,12 @@ export async function createEmployeeAction(formData: FormData) {
 }
 
 export async function updateEmployeeAction(formData: FormData) {
+  const adminAccess = await requireAdminAccess();
+
+  if (!adminAccess.ok) {
+    finish(adminAccess);
+  }
+
   const id = getString(formData, "id");
   const values = getEmployeeValues(formData);
   const photo = getEmployeePhotoFile(formData);
@@ -110,12 +123,24 @@ export async function updateEmployeeAction(formData: FormData) {
 }
 
 export async function deactivateEmployeeAction(formData: FormData) {
+  const adminAccess = await requireAdminAccess();
+
+  if (!adminAccess.ok) {
+    finish(adminAccess);
+  }
+
   const id = getString(formData, "id");
   const result = await setEmployeeActive(id, false);
   finish(result);
 }
 
 export async function reactivateEmployeeAction(formData: FormData) {
+  const adminAccess = await requireAdminAccess();
+
+  if (!adminAccess.ok) {
+    finish(adminAccess);
+  }
+
   const id = getString(formData, "id");
   const result = await setEmployeeActive(id, true);
   finish(result);
