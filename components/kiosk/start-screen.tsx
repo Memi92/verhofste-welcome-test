@@ -13,7 +13,7 @@ export function KioskStartScreen() {
     <main className="grid min-h-dvh grid-rows-[auto_1fr_auto] bg-stone-50 text-neutral-950">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 sm:px-10">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-neutral-200 bg-white p-1.5 shadow-sm">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[8px] border border-neutral-200 bg-white p-1.5 *shadow-sm">
             <Image
               src="/images/verhofste-logo.jpg"
               alt="Verhofsté logo"
@@ -23,9 +23,9 @@ export function KioskStartScreen() {
               className="h-12 w-auto object-contain"
             />
           </div>
-          <div>
+          {/*<div>
             <p className="text-lg font-semibold text-neutral-950">Verhofsté NV</p>
-          </div>
+          </div>*/}
         </div>
         <Badge
           variant="outline"
@@ -46,7 +46,7 @@ export function KioskStartScreen() {
           Welcome to Verhofsté nv
         </h1>
         <p className="mt-6 max-w-2xl text-xl leading-8 text-neutral-600 md:text-2xl md:leading-10">
-          Please choose an option below..
+          Please choose an option below
         </p>
         <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
           <Button
@@ -65,7 +65,7 @@ export function KioskStartScreen() {
             className={landingButtonClass}
           >
             <UserRound className="size-8" aria-hidden="true" />
-            No appointment
+            I have no appointment
           </Button>
           {/* TODO: Implement the supplier flow when it is defined. */}
           <Button
