@@ -6,6 +6,7 @@ import type { Employee } from "@/types";
 type MockCallEventType =
   | "call_employee_mock"
   | "call_reception_mock"
+  | "call_no_answer_timeout_mock"
   | "call_connected_mock"
   | "call_ended_mock"
   | "call_cancelled_mock";
@@ -13,6 +14,7 @@ type MockCallEventType =
 const mockCallEventMessages: Record<MockCallEventType, string> = {
   call_employee_mock: "Mock employee call requested.",
   call_reception_mock: "Mock reception call requested.",
+  call_no_answer_timeout_mock: "No answer popup timed out; returning to start.",
   call_connected_mock: "Mock employee call connected.",
   call_ended_mock: "Mock employee call ended.",
   call_cancelled_mock: "Mock employee call cancelled.",

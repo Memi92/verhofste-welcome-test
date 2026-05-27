@@ -54,6 +54,10 @@ type MockCallStatus =
 
 type MockCallTarget = "employee" | "reception";
 
+const NO_ANSWER_TIMEOUT_MS = 5000;
+const NO_ANSWER_DECISION_TIMEOUT_SECONDS = 20;
+const ENDED_CALL_RETURN_TIMEOUT_SECONDS = 10;
+
 const callStatusCopy: Record<
   MockCallStatus,
   { title: string; description: string }
@@ -95,7 +99,12 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   const [callStatus, setCallStatus] = useState<MockCallStatus | null>(null);
   const [callTarget, setCallTarget] = useState<MockCallTarget>("employee");
   const [isNoAnswerOpen, setIsNoAnswerOpen] = useState(false);
-  const [endedCountdown, setEndedCountdown] = useState(10);
+  const [noAnswerDecisionCountdown, setNoAnswerDecisionCountdown] = useState(
+    NO_ANSWER_DECISION_TIMEOUT_SECONDS
+  );
+  const [endedCountdown, setEndedCountdown] = useState(
+    ENDED_CALL_RETURN_TIMEOUT_SECONDS
+  );
   const callRunIdRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -148,7 +157,8 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setCallStatus(null);
     setCallTarget("employee");
     setIsNoAnswerOpen(false);
-    setEndedCountdown(10);
+    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
+    setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
   }
 
   function startMockCall(employee: Employee) {
@@ -160,7 +170,8 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setSelectedEmployee(employee);
     setCallTarget("employee");
     setIsNoAnswerOpen(false);
-    setEndedCountdown(10);
+    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
+    setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
     setCallStatus("calling");
 
     void logMockCallEventAction("call_employee_mock", employee.id).catch(
@@ -184,13 +195,16 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
         if (callRunIdRef.current === callRunId) {
           setCallStatus((currentStatus) => {
             if (currentStatus === "calling" || currentStatus === "ringing") {
+              setNoAnswerDecisionCountdown(
+                NO_ANSWER_DECISION_TIMEOUT_SECONDS
+              );
               setIsNoAnswerOpen(true);
             }
 
             return currentStatus;
           });
         }
-      }, 8000)
+      }, NO_ANSWER_TIMEOUT_MS)
     );
 
     callEmployeeMock(employee.id).catch(() => {
@@ -222,7 +236,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     callRunIdRef.current += 1;
     clearCallTimers();
     setCallStatus("ended");
-    setEndedCountdown(10);
+    setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
 
     if (employeeId || callTarget === "reception") {
       void logMockCallEventAction("call_ended_mock", employeeId).catch(
@@ -245,6 +259,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     callRunIdRef.current += 1;
     clearCallTimers();
     setIsNoAnswerOpen(false);
+    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
     logEmployeeCallCancelled();
 
     const callRunId = callRunIdRef.current;
@@ -277,9 +292,39 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     callRunIdRef.current += 1;
     clearCallTimers();
     setIsNoAnswerOpen(false);
+    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
     logEmployeeCallCancelled();
     router.push("/");
   }
+
+  useEffect(() => {
+    if (!isNoAnswerOpen) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      if (noAnswerDecisionCountdown <= 1) {
+        callRunIdRef.current += 1;
+        clearCallTimers();
+        setIsNoAnswerOpen(false);
+        setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
+
+        void logMockCallEventAction(
+          "call_no_answer_timeout_mock",
+          selectedEmployee?.id ?? null
+        ).catch(() => undefined);
+
+        router.push("/");
+        return;
+      }
+
+      setNoAnswerDecisionCountdown(noAnswerDecisionCountdown - 1);
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [isNoAnswerOpen, noAnswerDecisionCountdown, router, selectedEmployee?.id]);
 
   useEffect(() => {
     if (callStatus !== "ended") {
@@ -485,6 +530,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
               <DialogDescription className="text-base leading-7">
                 Would you like to call reception instead?
               </DialogDescription>
+              <p className="text-sm text-neutral-500">
+                Returning to start in {noAnswerDecisionCountdown}s
+              </p>
             </DialogHeader>
             <DialogFooter className="-mx-6 -mb-6 p-6 sm:justify-stretch">
               <Button

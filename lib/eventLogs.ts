@@ -7,6 +7,7 @@ type EventType =
   | "open_door_mock"
   | "call_employee_mock"
   | "call_reception_mock"
+  | "call_no_answer_timeout_mock"
   | "call_connected_mock"
   | "call_ended_mock"
   | "call_cancelled_mock";
