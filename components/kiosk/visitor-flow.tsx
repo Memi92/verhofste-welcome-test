@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -24,11 +25,19 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OnScreenKeyboard } from "@/components/kiosk/on-screen-keyboard";
 import { logMockCallEventAction } from "@/app/visitor/actions";
-import { callEmployeeMock } from "@/lib/mockHardware";
+import { callEmployeeMock, callReceptionMock } from "@/lib/mockHardware";
 import type { Employee } from "@/types";
 
 type VisitorFlowProps = {
@@ -42,6 +51,8 @@ type MockCallStatus =
   | "ended"
   | "cancelled"
   | "failed";
+
+type MockCallTarget = "employee" | "reception";
 
 const callStatusCopy: Record<
   MockCallStatus,
@@ -74,6 +85,7 @@ const callStatusCopy: Record<
 };
 
 export function VisitorFlow({ employees }: VisitorFlowProps) {
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
@@ -81,6 +93,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     null
   );
   const [callStatus, setCallStatus] = useState<MockCallStatus | null>(null);
+  const [callTarget, setCallTarget] = useState<MockCallTarget>("employee");
+  const [isNoAnswerOpen, setIsNoAnswerOpen] = useState(false);
+  const [endedCountdown, setEndedCountdown] = useState(10);
   const callRunIdRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
@@ -131,6 +146,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     clearCallTimers();
     setSelectedEmployee(null);
     setCallStatus(null);
+    setCallTarget("employee");
+    setIsNoAnswerOpen(false);
+    setEndedCountdown(10);
   }
 
   function startMockCall(employee: Employee) {
@@ -140,6 +158,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     const callRunId = callRunIdRef.current;
 
     setSelectedEmployee(employee);
+    setCallTarget("employee");
+    setIsNoAnswerOpen(false);
+    setEndedCountdown(10);
     setCallStatus("calling");
 
     void logMockCallEventAction("call_employee_mock", employee.id).catch(
@@ -156,18 +177,20 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
       }, 1000)
     );
 
+    // TODO: This 5s no-answer timeout is mock-only. Real 3CX timeout should
+    // be configurable, likely around 20-30 seconds.
     timersRef.current.push(
       setTimeout(() => {
-        // TODO: The kiosk must stay on the connected screen until a real call
-        // ended event arrives from the telephony provider.
         if (callRunIdRef.current === callRunId) {
-          setCallStatus("connected");
-          void logMockCallEventAction(
-            "call_connected_mock",
-            employee.id
-          ).catch(() => undefined);
+          setCallStatus((currentStatus) => {
+            if (currentStatus === "calling" || currentStatus === "ringing") {
+              setIsNoAnswerOpen(true);
+            }
+
+            return currentStatus;
+          });
         }
-      }, 3000)
+      }, 8000)
     );
 
     callEmployeeMock(employee.id).catch(() => {
@@ -193,18 +216,89 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   }
 
   function endMockCall() {
-    const employeeId = selectedEmployee?.id;
+    const employeeId =
+      callTarget === "employee" ? selectedEmployee?.id ?? null : null;
 
     callRunIdRef.current += 1;
     clearCallTimers();
     setCallStatus("ended");
+    setEndedCountdown(10);
 
-    if (employeeId) {
+    if (employeeId || callTarget === "reception") {
       void logMockCallEventAction("call_ended_mock", employeeId).catch(
         () => undefined
       );
     }
   }
+
+  function logEmployeeCallCancelled() {
+    const employeeId = selectedEmployee?.id;
+
+    if (employeeId) {
+      void logMockCallEventAction("call_cancelled_mock", employeeId).catch(
+        () => undefined
+      );
+    }
+  }
+
+  function callReceptionFallback() {
+    callRunIdRef.current += 1;
+    clearCallTimers();
+    setIsNoAnswerOpen(false);
+    logEmployeeCallCancelled();
+
+    const callRunId = callRunIdRef.current;
+
+    setCallTarget("reception");
+    setCallStatus("calling");
+    void logMockCallEventAction("call_reception_mock", null).catch(
+      () => undefined
+    );
+
+    callReceptionMock().catch(() => {
+      if (callRunIdRef.current === callRunId) {
+        setCallStatus("failed");
+      }
+    });
+
+    timersRef.current.push(
+      setTimeout(() => {
+        if (callRunIdRef.current === callRunId) {
+          setCallStatus("connected");
+          void logMockCallEventAction("call_connected_mock", null).catch(
+            () => undefined
+          );
+        }
+      }, 2000)
+    );
+  }
+
+  function noAnswerBackToStart() {
+    callRunIdRef.current += 1;
+    clearCallTimers();
+    setIsNoAnswerOpen(false);
+    logEmployeeCallCancelled();
+    router.push("/");
+  }
+
+  useEffect(() => {
+    if (callStatus !== "ended") {
+      return;
+    }
+
+    if (endedCountdown <= 0) {
+      router.push("/");
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setEndedCountdown((currentValue) => currentValue - 1);
+    }, 1000);
+
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [callStatus, endedCountdown, router]);
 
   if (selectedEmployee) {
     const hasCallStarted = callStatus !== null;
@@ -233,13 +327,19 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                 )}
               </div>
               <CardTitle className="text-3xl font-semibold md:text-4xl">
-                {hasCallStarted
-                  ? callStatusCopy[callStatus].title
-                  : "Confirm your host"}
+                {callTarget === "reception" &&
+                (callStatus === "calling" || callStatus === "ringing")
+                  ? "Calling reception..."
+                  : hasCallStarted
+                    ? callStatusCopy[callStatus].title
+                    : "Confirm your host"}
               </CardTitle>
               <CardDescription className="mx-auto max-w-2xl text-lg leading-7">
                 {hasCallStarted
-                  ? callStatusCopy[callStatus].description
+                  ? callTarget === "reception" &&
+                    (callStatus === "calling" || callStatus === "ringing")
+                    ? "We are placing a mocked call to reception."
+                    : callStatusCopy[callStatus].description
                   : "Please confirm before starting the mocked call."}
               </CardDescription>
             </CardHeader>
@@ -247,26 +347,34 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
             <CardContent className="space-y-6 px-8 pb-8">
               <div className="rounded-[8px] border border-neutral-200 bg-neutral-50 p-6 text-center">
                 <p className="text-3xl font-semibold text-neutral-950">
-                  {selectedEmployee.name}
+                  {callTarget === "reception"
+                    ? "Reception"
+                    : selectedEmployee.name}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
                   <Badge
                     variant="secondary"
                     className="h-8 rounded-[8px] px-3 text-sm"
                   >
-                    {selectedEmployee.department}
+                    {callTarget === "reception"
+                      ? "Reception"
+                      : selectedEmployee.department}
                   </Badge>
                   <Badge
                     variant="secondary"
                     className="h-8 rounded-[8px] px-3 text-sm"
                   >
-                    {selectedEmployee.function}
+                    {callTarget === "reception"
+                      ? "Front desk"
+                      : selectedEmployee.function}
                   </Badge>
                   <Badge
                     variant="outline"
                     className="h-8 rounded-[8px] px-3 text-sm"
                   >
-                    Extension {selectedEmployee.phone_extension}
+                    {callTarget === "reception"
+                      ? "Fallback call"
+                      : `Extension ${selectedEmployee.phone_extension}`}
                   </Badge>
                 </div>
               </div>
@@ -350,11 +458,53 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   >
                     <Link href="/">Back to start</Link>
                   </Button>
+                  {callStatus === "ended" ? (
+                    <p className="text-center text-sm text-neutral-500 sm:col-span-2">
+                      Going back to start in {endedCountdown}s
+                    </p>
+                  ) : null}
                 </div>
               ) : null}
             </CardContent>
           </Card>
         </div>
+        <Dialog
+          open={isNoAnswerOpen}
+          onOpenChange={(open) => {
+            if (open) {
+              setIsNoAnswerOpen(true);
+            }
+          }}
+        >
+          <DialogContent
+            className="rounded-[8px] p-6 sm:max-w-lg"
+            showCloseButton={false}
+          >
+            <DialogHeader>
+              <DialogTitle className="text-2xl">No answer yet</DialogTitle>
+              <DialogDescription className="text-base leading-7">
+                Would you like to call reception instead?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="-mx-6 -mb-6 p-6 sm:justify-stretch">
+              <Button
+                type="button"
+                className="h-14 flex-1 rounded-[8px] bg-neutral-950 text-base text-white hover:bg-neutral-800"
+                onClick={callReceptionFallback}
+              >
+                Yes, call reception
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-14 flex-1 rounded-[8px] text-base"
+                onClick={noAnswerBackToStart}
+              >
+                No, back to start
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </main>
     );
   }

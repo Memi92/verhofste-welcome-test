@@ -19,6 +19,14 @@ export async function callEmployeeMock(employeeId: Employee["id"]) {
   // this mock action instead of relying on console output.
 }
 
+export async function callReceptionMock() {
+  await wait(MOCK_ACTION_DELAY_MS);
+
+  // TODO: Future 3CX integration should route this fallback to the configured
+  // reception extension instead of this mocked console event.
+  console.info("[mockHardware] callReceptionMock");
+}
+
 export async function openDoorMock(employeeId?: Employee["id"]) {
   await wait(MOCK_ACTION_DELAY_MS);
 

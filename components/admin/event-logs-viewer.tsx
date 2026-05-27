@@ -34,9 +34,10 @@ const eventTypeLabels: Record<string, string> = {
   pin_failed: "PIN failed",
   open_door_mock: "Door mock",
   call_employee_mock: "Call mock",
-  call_connected_mock: "Call connected mock",
-  call_ended_mock: "Call ended mock",
-  call_cancelled_mock: "Call cancelled mock",
+  call_reception_mock: "Reception call",
+  call_connected_mock: "Call connected",
+  call_ended_mock: "Call ended",
+  call_cancelled_mock: "Call cancelled",
 };
 
 const filterOptions = [
@@ -45,6 +46,7 @@ const filterOptions = [
   { label: "PIN failed", value: "pin_failed" },
   { label: "Door mock", value: "open_door_mock" },
   { label: "Call mock", value: "call_employee_mock" },
+  { label: "Reception call", value: "call_reception_mock" },
   { label: "Call connected", value: "call_connected_mock" },
   { label: "Call ended", value: "call_ended_mock" },
   { label: "Call cancelled", value: "call_cancelled_mock" },

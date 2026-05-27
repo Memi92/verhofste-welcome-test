@@ -5,12 +5,14 @@ import type { Employee } from "@/types";
 
 type MockCallEventType =
   | "call_employee_mock"
+  | "call_reception_mock"
   | "call_connected_mock"
   | "call_ended_mock"
   | "call_cancelled_mock";
 
 const mockCallEventMessages: Record<MockCallEventType, string> = {
   call_employee_mock: "Mock employee call requested.",
+  call_reception_mock: "Mock reception call requested.",
   call_connected_mock: "Mock employee call connected.",
   call_ended_mock: "Mock employee call ended.",
   call_cancelled_mock: "Mock employee call cancelled.",
@@ -18,7 +20,7 @@ const mockCallEventMessages: Record<MockCallEventType, string> = {
 
 export async function logMockCallEventAction(
   eventType: MockCallEventType,
-  employeeId: Employee["id"]
+  employeeId: Employee["id"] | null
 ) {
   await logEvent(eventType, mockCallEventMessages[eventType], employeeId);
 }

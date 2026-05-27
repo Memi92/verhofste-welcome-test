@@ -6,6 +6,7 @@ type EventType =
   | "pin_failed"
   | "open_door_mock"
   | "call_employee_mock"
+  | "call_reception_mock"
   | "call_connected_mock"
   | "call_ended_mock"
   | "call_cancelled_mock";
