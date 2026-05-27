@@ -18,3 +18,11 @@ export async function callEmployeeMock(employeeId: Employee["id"]) {
   // TODO: When Supabase is configured, insert a server-side event_logs row for
   // this mock action instead of relying on console output.
 }
+
+export async function openDoorMock(employeeId?: Employee["id"]) {
+  await wait(MOCK_ACTION_DELAY_MS);
+
+  // TODO: Replace this with real door hardware integration only after that
+  // system is selected and approved. This must remain mocked for now.
+  console.info("[mockHardware] openDoorMock", { employeeId });
+}

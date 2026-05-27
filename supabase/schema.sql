@@ -1,6 +1,5 @@
 -- Supabase schema for the reception kiosk employee directory.
--- Hardware, PIN, Teams, and 3CX integrations are intentionally out of scope
--- for this milestone.
+-- Real hardware, Teams, and 3CX integrations are intentionally out of scope.
 
 create table if not exists public.employees (
   id uuid primary key default gen_random_uuid(),
@@ -105,7 +104,7 @@ create index if not exists access_codes_is_active_idx
   on public.access_codes (is_active);
 
 comment on table public.access_codes is
-  'Future table for employee access. Store only hashed PINs; never store raw codes.';
+  'Reserved for future generic access codes. Employee-specific PINs use employee_access_codes. Store only hashes; never store raw codes.';
 
 insert into storage.buckets (
   id,
@@ -162,18 +161,18 @@ create policy "development employees anon update"
   using (true)
   with check (true);
 
--- DEVELOPMENT ONLY: Temporary employee PIN policies for admin testing.
+-- DEVELOPMENT ONLY: Temporary employee PIN policies for kiosk/admin testing.
 -- PIN values are stored only as salted hashes in pin_hash.
--- TODO: Before production, restrict all employee_access_codes access to
--- authenticated admin users only. Visitor PIN validation should use a
--- least-privilege server-side path and must never expose pin_hash values to
+-- TODO: Before production, restrict direct employee_access_codes access to
+-- authenticated admin users only and move visitor PIN validation behind a
+-- least-privilege server-side path/RPC. Never expose pin_hash values to
 -- browsers.
 drop policy if exists "development employee access codes authenticated select"
   on public.employee_access_codes;
 create policy "development employee access codes authenticated select"
   on public.employee_access_codes
   for select
-  to authenticated
+  to anon, authenticated
   using (true);
 
 drop policy if exists "development employee access codes authenticated insert"
@@ -191,6 +190,17 @@ create policy "development employee access codes authenticated update"
   for update
   to authenticated
   using (true)
+  with check (true);
+
+-- DEVELOPMENT ONLY: Temporary event logging policy for kiosk/admin testing.
+-- TODO: Before production, restrict event log writes and add admin event log
+-- review, rate limiting, and lockout handling for repeated failed PIN attempts.
+drop policy if exists "development event logs anon insert"
+  on public.event_logs;
+create policy "development event logs anon insert"
+  on public.event_logs
+  for insert
+  to anon, authenticated
   with check (true);
 
 -- DEVELOPMENT ONLY: Temporary Storage policies for employee photo uploads.

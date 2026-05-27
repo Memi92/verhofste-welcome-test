@@ -12,6 +12,30 @@ type ActivePinRow = {
   id: string;
 };
 
+type ActivePinValidationRow = {
+  employee_id: string;
+  pin_hash: string;
+};
+
+type PinEmployeeRow = {
+  id: string;
+  name: string;
+  is_active: boolean;
+};
+
+type PinValidationResult =
+  | {
+      ok: true;
+      employee: {
+        id: Employee["id"];
+        name: Employee["name"];
+      };
+    }
+  | {
+      ok: false;
+      message: string;
+    };
+
 export function getPinFromFormData(formData: FormData) {
   const value = formData.get("pin_code");
 
@@ -25,6 +49,14 @@ export function validateOptionalPin(pin: string) {
 
   if (!/^\d{4}$/.test(pin)) {
     return "PIN code must be exactly 4 numeric digits.";
+  }
+
+  return null;
+}
+
+export function validateRequiredPin(pin: string) {
+  if (!/^\d{4}$/.test(pin)) {
+    return "PIN must be exactly 4 numeric digits.";
   }
 
   return null;
@@ -130,4 +162,60 @@ export async function setEmployeePin(
   }
 
   return { ok: true, message: "PIN saved." };
+}
+
+export async function validateEmployeePin(
+  pin: string
+): Promise<PinValidationResult> {
+  const validationError = validateRequiredPin(pin);
+
+  if (validationError) {
+    return { ok: false, message: validationError };
+  }
+
+  const supabase = await createClient();
+
+  if (!supabase) {
+    return {
+      ok: false,
+      message: "Supabase is not configured, so PINs cannot be validated.",
+    };
+  }
+
+  const { data: pinRows, error: pinError } = await supabase
+    .from("employee_access_codes")
+    .select("employee_id,pin_hash")
+    .eq("is_active", true)
+    .returns<ActivePinValidationRow[]>();
+
+  if (pinError) {
+    return { ok: false, message: "PIN validation is unavailable." };
+  }
+
+  const matchedPin = (pinRows ?? []).find((row) =>
+    verifyPinForDevelopment(pin, row.pin_hash)
+  );
+
+  if (!matchedPin) {
+    return { ok: false, message: "Invalid PIN" };
+  }
+
+  const { data: employee, error: employeeError } = await supabase
+    .from("employees")
+    .select("id,name,is_active")
+    .eq("id", matchedPin.employee_id)
+    .eq("is_active", true)
+    .single<PinEmployeeRow>();
+
+  if (employeeError || !employee) {
+    return { ok: false, message: "Invalid PIN" };
+  }
+
+  return {
+    ok: true,
+    employee: {
+      id: employee.id,
+      name: employee.name,
+    },
+  };
 }
