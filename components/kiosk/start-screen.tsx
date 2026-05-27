@@ -1,11 +1,14 @@
 import Image from "next/image";
 import Link from "next/link";
-import { CalendarCheck, ShieldCheck } from "lucide-react";
+import { CalendarCheck, ShieldCheck, Truck, UserRound } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export function KioskStartScreen() {
+  const landingButtonClass =
+    "h-20 w-full max-w-96 rounded-[8px] bg-neutral-950 px-8 text-2xl font-semibold text-white hover:bg-neutral-800 disabled:opacity-75 sm:w-96";
+
   return (
     <main className="grid min-h-dvh grid-rows-[auto_1fr_auto] bg-stone-50 text-neutral-950">
       <header className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 sm:px-10">
@@ -46,15 +49,35 @@ export function KioskStartScreen() {
           Welcome. Select your host and we will notify them that you have
           arrived.
         </p>
-        <Button
-          asChild
-          className="mt-12 h-20 rounded-[8px] bg-neutral-950 px-12 text-2xl font-semibold text-white hover:bg-neutral-800"
-        >
-          <Link href="/visitor">
-            <CalendarCheck className="size-8" aria-hidden="true" />
-            I have an appointment
-          </Link>
-        </Button>
+        <div className="mt-12 flex flex-wrap items-center justify-center gap-4">
+          <Button
+            asChild
+            className={landingButtonClass}
+          >
+            <Link href="/visitor">
+              <CalendarCheck className="size-8" aria-hidden="true" />
+              I have an appointment
+            </Link>
+          </Button>
+          {/* TODO: Implement the no-appointment visitor flow when it is defined. */}
+          <Button
+            type="button"
+            disabled
+            className={landingButtonClass}
+          >
+            <UserRound className="size-8" aria-hidden="true" />
+            No appointment
+          </Button>
+          {/* TODO: Implement the supplier flow when it is defined. */}
+          <Button
+            type="button"
+            disabled
+            className={landingButtonClass}
+          >
+            <Truck className="size-8" aria-hidden="true" />
+            Supplier
+          </Button>
+        </div>
       </section>
 
       <footer className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-6 text-sm text-neutral-500 sm:px-10">
