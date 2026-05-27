@@ -34,6 +34,9 @@ const eventTypeLabels: Record<string, string> = {
   pin_failed: "PIN failed",
   open_door_mock: "Door mock",
   call_employee_mock: "Call mock",
+  call_connected_mock: "Call connected mock",
+  call_ended_mock: "Call ended mock",
+  call_cancelled_mock: "Call cancelled mock",
 };
 
 const filterOptions = [
@@ -42,6 +45,9 @@ const filterOptions = [
   { label: "PIN failed", value: "pin_failed" },
   { label: "Door mock", value: "open_door_mock" },
   { label: "Call mock", value: "call_employee_mock" },
+  { label: "Call connected", value: "call_connected_mock" },
+  { label: "Call ended", value: "call_ended_mock" },
+  { label: "Call cancelled", value: "call_cancelled_mock" },
 ];
 
 function getEventTypeLabel(eventType: string) {
@@ -101,7 +107,7 @@ export function EventLogsViewer({
               Event logs
             </CardTitle>
             <p className="mt-2 text-sm text-neutral-600">
-              Showing newest logs first. Times are shown in Brussels local time.
+              Showing newest logs first.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

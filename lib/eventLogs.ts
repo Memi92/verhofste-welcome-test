@@ -1,7 +1,14 @@
 import { createClient } from "@/lib/supabase/server";
 import type { Employee } from "@/types";
 
-type EventType = "pin_success" | "pin_failed" | "open_door_mock";
+type EventType =
+  | "pin_success"
+  | "pin_failed"
+  | "open_door_mock"
+  | "call_employee_mock"
+  | "call_connected_mock"
+  | "call_ended_mock"
+  | "call_cancelled_mock";
 
 export async function logEvent(
   eventType: EventType,

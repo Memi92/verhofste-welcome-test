@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -27,11 +27,50 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OnScreenKeyboard } from "@/components/kiosk/on-screen-keyboard";
+import { logMockCallEventAction } from "@/app/visitor/actions";
 import { callEmployeeMock } from "@/lib/mockHardware";
 import type { Employee } from "@/types";
 
 type VisitorFlowProps = {
   employees: Employee[];
+};
+
+type MockCallStatus =
+  | "calling"
+  | "ringing"
+  | "connected"
+  | "ended"
+  | "cancelled"
+  | "failed";
+
+const callStatusCopy: Record<
+  MockCallStatus,
+  { title: string; description: string }
+> = {
+  calling: {
+    title: "Notifying your host...",
+    description: "We are preparing the mocked call request.",
+  },
+  ringing: {
+    title: "Calling your host...",
+    description: "This is a simulated ringing state for the kiosk milestone.",
+  },
+  connected: {
+    title: "Connected. You may speak now.",
+    description: "The mock call will stay open until you end it.",
+  },
+  ended: {
+    title: "Call ended. Thank you.",
+    description: "The mocked call lifecycle has finished.",
+  },
+  cancelled: {
+    title: "Call cancelled.",
+    description: "No further mock call action is running.",
+  },
+  failed: {
+    title: "We could not notify your host. Please try again or contact reception.",
+    description: "The mocked call request failed.",
+  },
 };
 
 export function VisitorFlow({ employees }: VisitorFlowProps) {
@@ -41,9 +80,20 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     null
   );
-  const [isCalling, setIsCalling] = useState(false);
-  const [callSent, setCallSent] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [callStatus, setCallStatus] = useState<MockCallStatus | null>(null);
+  const callRunIdRef = useRef(0);
+  const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  function clearCallTimers() {
+    timersRef.current.forEach((timer) => clearTimeout(timer));
+    timersRef.current = [];
+  }
+
+  useEffect(() => {
+    return () => {
+      clearCallTimers();
+    };
+  }, []);
 
   const filteredEmployees = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -76,31 +126,89 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     );
   }, [employees]);
 
-  async function handleCallEmployee() {
-    if (!selectedEmployee) {
-      return;
-    }
+  function resetFlow() {
+    callRunIdRef.current += 1;
+    clearCallTimers();
+    setSelectedEmployee(null);
+    setCallStatus(null);
+  }
 
-    setIsCalling(true);
-    setError(null);
+  function startMockCall(employee: Employee) {
+    callRunIdRef.current += 1;
+    clearCallTimers();
 
-    try {
-      await callEmployeeMock(selectedEmployee.id);
-      setCallSent(true);
-    } catch {
-      setError("The mock call could not be sent. Please try again.");
-    } finally {
-      setIsCalling(false);
+    const callRunId = callRunIdRef.current;
+
+    setSelectedEmployee(employee);
+    setCallStatus("calling");
+
+    void logMockCallEventAction("call_employee_mock", employee.id).catch(
+      () => undefined
+    );
+
+    // TODO: Future 3CX integration should provide real ringing, connected,
+    // ended, and failed states instead of these local mock timers.
+    timersRef.current.push(
+      setTimeout(() => {
+        if (callRunIdRef.current === callRunId) {
+          setCallStatus("ringing");
+        }
+      }, 1000)
+    );
+
+    timersRef.current.push(
+      setTimeout(() => {
+        // TODO: The kiosk must stay on the connected screen until a real call
+        // ended event arrives from the telephony provider.
+        if (callRunIdRef.current === callRunId) {
+          setCallStatus("connected");
+          void logMockCallEventAction(
+            "call_connected_mock",
+            employee.id
+          ).catch(() => undefined);
+        }
+      }, 3000)
+    );
+
+    callEmployeeMock(employee.id).catch(() => {
+      if (callRunIdRef.current === callRunId) {
+        clearCallTimers();
+        setCallStatus("failed");
+      }
+    });
+  }
+
+  function cancelMockCall() {
+    const employeeId = selectedEmployee?.id;
+
+    callRunIdRef.current += 1;
+    clearCallTimers();
+    setCallStatus("cancelled");
+
+    if (employeeId) {
+      void logMockCallEventAction("call_cancelled_mock", employeeId).catch(
+        () => undefined
+      );
     }
   }
 
-  function resetFlow() {
-    setSelectedEmployee(null);
-    setCallSent(false);
-    setError(null);
+  function endMockCall() {
+    const employeeId = selectedEmployee?.id;
+
+    callRunIdRef.current += 1;
+    clearCallTimers();
+    setCallStatus("ended");
+
+    if (employeeId) {
+      void logMockCallEventAction("call_ended_mock", employeeId).catch(
+        () => undefined
+      );
+    }
   }
 
   if (selectedEmployee) {
+    const hasCallStarted = callStatus !== null;
+
     return (
       <main className="min-h-dvh bg-stone-50 px-5 py-6 text-neutral-950 sm:px-8">
         <div className="mx-auto flex min-h-[calc(100dvh-3rem)] w-full max-w-4xl flex-col">
@@ -109,28 +217,30 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
             variant="ghost"
             className="mb-6 h-12 w-fit rounded-[8px] px-4 text-base"
           >
-            <Link href={callSent ? "/" : "/visitor"} onClick={resetFlow}>
+            <Link href="/visitor" onClick={resetFlow}>
               <ArrowLeft className="size-5" aria-hidden="true" />
-              {callSent ? "Back to start" : "Choose another employee"}
+              Choose another employee
             </Link>
           </Button>
 
           <Card className="my-auto rounded-[8px] border-neutral-200 bg-white shadow-sm">
             <CardHeader className="gap-3 p-8 text-center">
               <div className="mx-auto flex size-16 items-center justify-center rounded-[8px] bg-emerald-50 text-emerald-700">
-                {callSent ? (
+                {callStatus === "ended" ? (
                   <CheckCircle2 className="size-9" aria-hidden="true" />
                 ) : (
                   <Phone className="size-9" aria-hidden="true" />
                 )}
               </div>
               <CardTitle className="text-3xl font-semibold md:text-4xl">
-                {callSent ? "Host notification sent" : "Confirm your host"}
+                {hasCallStarted
+                  ? callStatusCopy[callStatus].title
+                  : "Confirm your host"}
               </CardTitle>
               <CardDescription className="mx-auto max-w-2xl text-lg leading-7">
-                {callSent
-                  ? "This is a mocked call action for the first kiosk milestone."
-                  : "We will send a mocked call request to the selected employee."}
+                {hasCallStarted
+                  ? callStatusCopy[callStatus].description
+                  : "Please confirm before starting the mocked call."}
               </CardDescription>
             </CardHeader>
 
@@ -161,52 +271,86 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                 </div>
               </div>
 
-              {error ? (
-                <Alert variant="destructive" className="rounded-[8px] p-4">
-                  <AlertTitle>Mock action failed</AlertTitle>
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              ) : null}
-
-              {callSent ? (
-                <Alert className="rounded-[8px] border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
-                  <CheckCircle2 className="size-5" aria-hidden="true" />
-                  <AlertTitle>Mock call sent</AlertTitle>
-                  <AlertDescription className="text-emerald-800">
-                    The employee call was triggered through callEmployeeMock().
-                    A future Supabase event log insert will be added after the
-                    database is configured.
-                  </AlertDescription>
-                </Alert>
-              ) : (
+              {!hasCallStarted ? (
                 <div className="grid gap-3 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    className="h-16 rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
+                    onClick={() => startMockCall(selectedEmployee)}
+                  >
+                    Call
+                  </Button>
                   <Button
                     type="button"
                     variant="outline"
                     className="h-16 rounded-[8px] text-lg"
                     onClick={resetFlow}
                   >
-                    Change selection
-                  </Button>
-                  <Button
-                    type="button"
-                    className="h-16 rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
-                    disabled={isCalling}
-                    onClick={handleCallEmployee}
-                  >
-                    <Phone className="size-5" aria-hidden="true" />
-                    {isCalling ? "Sending mock call..." : "Call"}
+                    Go back
                   </Button>
                 </div>
-              )}
+              ) : null}
 
-              {callSent ? (
+              {callStatus === "connected" ? (
+                <Alert className="rounded-[8px] border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+                  <CheckCircle2 className="size-5" aria-hidden="true" />
+                  <AlertTitle>Mock call connected</AlertTitle>
+                  <AlertDescription className="text-emerald-800">
+                    Stay on this screen while speaking with your host.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {callStatus === "failed" ? (
+                <Alert variant="destructive" className="rounded-[8px] p-4">
+                  <AlertTitle>Mock call failed</AlertTitle>
+                  <AlertDescription>
+                    We could not notify your host. Please try again or contact
+                    reception.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+
+              {callStatus === "calling" || callStatus === "ringing" ? (
                 <Button
-                  asChild
-                  className="h-16 w-full rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
+                  type="button"
+                  variant="outline"
+                  className="h-16 w-full rounded-[8px] text-lg"
+                  onClick={cancelMockCall}
                 >
-                  <Link href="/">Finish</Link>
+                  Cancel
                 </Button>
+              ) : null}
+
+              {callStatus === "connected" ? (
+                <Button
+                  type="button"
+                  className="h-16 w-full rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
+                  onClick={endMockCall}
+                >
+                  End mock call
+                </Button>
+              ) : null}
+
+              {callStatus === "ended" ||
+              callStatus === "cancelled" ||
+              callStatus === "failed" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-16 rounded-[8px] text-lg"
+                    onClick={() => startMockCall(selectedEmployee)}
+                  >
+                    Try again
+                  </Button>
+                  <Button
+                    asChild
+                    className="h-16 rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
+                  >
+                    <Link href="/">Back to start</Link>
+                  </Button>
+                </div>
               ) : null}
             </CardContent>
           </Card>
@@ -318,11 +462,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
               type="button"
               aria-label={`Notify ${employee.name}`}
               className="group flex min-h-52 w-full flex-col justify-between rounded-[8px] border border-neutral-200 bg-white p-5 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-neutral-300 hover:shadow-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-neutral-400 active:translate-y-px"
-              onClick={() => {
-                setSelectedEmployee(employee);
-                setCallSent(false);
-                setError(null);
-              }}
+              onClick={() => setSelectedEmployee(employee)}
             >
               <div className="flex min-w-0 items-start gap-4">
                 <div className="relative flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-[8px] border border-neutral-200 bg-neutral-50 text-neutral-500 transition group-hover:border-neutral-300 group-hover:bg-neutral-100 group-hover:text-neutral-700">
@@ -343,7 +483,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                 <div className="min-w-0 flex-1 space-y-3">
                   <div className="space-y-2">
                     <p className="break-words text-2xl font-semibold leading-tight text-neutral-950">
-                    {employee.name}
+                      {employee.name}
                     </p>
                     <span className="inline-flex max-w-full rounded-[8px] border border-neutral-200 bg-neutral-50 px-2.5 py-1 text-xs font-medium leading-5 text-neutral-600">
                       <span className="min-w-0 break-words">
