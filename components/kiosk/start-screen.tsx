@@ -58,14 +58,14 @@ export function KioskStartScreen() {
               I have an appointment
             </Link>
           </Button>
-          {/* TODO: Implement the no-appointment visitor flow when it is defined. */}
           <Button
-            type="button"
-            disabled
+            asChild
             className={landingButtonClass}
           >
-            <UserRound className="size-8" aria-hidden="true" />
-            I have no appointment
+            <Link href="/reception">
+              <UserRound className="size-8" aria-hidden="true" />
+              No appointment
+            </Link>
           </Button>
           {/* TODO: Implement the supplier flow when it is defined. */}
           <Button

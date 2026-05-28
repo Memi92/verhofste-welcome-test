@@ -1,8 +1,11 @@
 import "server-only";
 
-import { callEmployeeWithMock } from "@/lib/phone/mockPhoneProvider";
 import {
-  callEmployeeWithThreeCx,
+  callEmployeeWithMock,
+  callReceptionWithMock,
+} from "@/lib/phone/mockPhoneProvider";
+import {
+  callDestinationWithThreeCx,
   endThreeCxPhoneCall,
   getThreeCxPhoneCallStatus,
   type PhoneCallStatus,
@@ -17,15 +20,31 @@ export function getPhoneProvider(): PhoneProvider {
     : "mock";
 }
 
+export function getReceptionExtension() {
+  return process.env.RECEPTION_EXTENSION?.trim() || "801";
+}
+
 export async function callEmployee(employee: Employee) {
   const provider = getPhoneProvider();
 
   if (provider === "3cx") {
-    await callEmployeeWithThreeCx(employee);
+    await callDestinationWithThreeCx(employee.phone_extension);
     return { provider };
   }
 
   await callEmployeeWithMock(employee);
+  return { provider };
+}
+
+export async function callReception() {
+  const provider = getPhoneProvider();
+
+  if (provider === "3cx") {
+    await callDestinationWithThreeCx(getReceptionExtension());
+    return { provider };
+  }
+
+  await callReceptionWithMock();
   return { provider };
 }
 
@@ -37,6 +56,16 @@ export async function getPhoneCallStatus(
   }
 
   return getThreeCxPhoneCallStatus(employee);
+}
+
+export async function getReceptionCallStatus(): Promise<PhoneCallStatus | null> {
+  if (getPhoneProvider() !== "3cx") {
+    return null;
+  }
+
+  return getThreeCxPhoneCallStatus({
+    phone_extension: getReceptionExtension(),
+  });
 }
 
 export async function endPhoneCall() {

@@ -3,8 +3,10 @@
 import { logEvent } from "@/lib/eventLogs";
 import {
   callEmployee,
+  callReception,
   endPhoneCall,
   getPhoneCallStatus,
+  getReceptionCallStatus,
 } from "@/lib/phone/phoneProvider";
 import { getActiveEmployees } from "@/lib/supabaseEmployees";
 import type { Employee } from "@/types";
@@ -17,6 +19,11 @@ type MockCallEventType =
   | "call_cancelled_3cx"
   | "call_failed_3cx"
   | "call_reception_mock"
+  | "call_reception_3cx"
+  | "call_reception_connected_3cx"
+  | "call_reception_ended_3cx"
+  | "call_reception_cancelled_3cx"
+  | "call_reception_failed_3cx"
   | "call_no_answer_timeout_mock"
   | "call_connected_mock"
   | "call_ended_mock"
@@ -30,6 +37,11 @@ const mockCallEventMessages: Record<MockCallEventType, string> = {
   call_cancelled_3cx: "3CX call cancelled.",
   call_failed_3cx: "3CX call failed.",
   call_reception_mock: "Mock reception call requested.",
+  call_reception_3cx: "3CX reception call requested.",
+  call_reception_connected_3cx: "3CX reception connected.",
+  call_reception_ended_3cx: "3CX reception ended.",
+  call_reception_cancelled_3cx: "3CX reception cancelled.",
+  call_reception_failed_3cx: "3CX reception failed.",
   call_no_answer_timeout_mock: "No answer popup timed out; returning to start.",
   call_connected_mock: "Mock employee call connected.",
   call_ended_mock: "Mock employee call ended.",
@@ -41,6 +53,35 @@ export async function logMockCallEventAction(
   employeeId: Employee["id"] | null
 ) {
   await logEvent(eventType, mockCallEventMessages[eventType], employeeId);
+}
+
+export async function callReceptionAction() {
+  try {
+    const { provider } = await callReception();
+
+    await logEvent(
+      provider === "3cx" ? "call_reception_3cx" : "call_reception_mock",
+      provider === "3cx"
+        ? "3CX reception call requested."
+        : "Mock reception call requested."
+    );
+
+    return { ok: true, provider };
+  } catch (error) {
+    console.error("[phone] Reception call failed", {
+      provider: process.env.PHONE_PROVIDER?.trim() || "mock",
+      error,
+    });
+
+    if (process.env.PHONE_PROVIDER?.trim().toLowerCase() === "3cx") {
+      await logEvent("call_reception_failed_3cx", "3CX reception failed.");
+    }
+
+    return {
+      ok: false,
+      message: "We could not notify reception. Please try again.",
+    };
+  }
 }
 
 export async function callEmployeeAction(employeeId: Employee["id"]) {
@@ -115,6 +156,25 @@ export async function getPhoneCallStatusAction(employeeId: Employee["id"]) {
   }
 }
 
+export async function getReceptionCallStatusAction() {
+  try {
+    const status = await getReceptionCallStatus();
+
+    return { ok: true, status };
+  } catch (error) {
+    console.error("[phone] Reception call status lookup failed", {
+      provider: process.env.PHONE_PROVIDER?.trim() || "mock",
+      error,
+    });
+
+    if (process.env.PHONE_PROVIDER?.trim().toLowerCase() === "3cx") {
+      await logEvent("call_reception_failed_3cx", "3CX reception failed.");
+    }
+
+    return { ok: false, status: "failed" as const };
+  }
+}
+
 export async function logThreeCxCallStatusEventAction(
   eventType:
     | "call_connected_3cx"
@@ -123,6 +183,15 @@ export async function logThreeCxCallStatusEventAction(
   employeeId: Employee["id"]
 ) {
   await logEvent(eventType, mockCallEventMessages[eventType], employeeId);
+}
+
+export async function logThreeCxReceptionStatusEventAction(
+  eventType:
+    | "call_reception_connected_3cx"
+    | "call_reception_ended_3cx"
+    | "call_reception_cancelled_3cx"
+) {
+  await logEvent(eventType, mockCallEventMessages[eventType]);
 }
 
 export async function endPhoneCallAction(employeeId: Employee["id"]) {
@@ -145,6 +214,28 @@ export async function endPhoneCallAction(employeeId: Employee["id"]) {
       ok: false,
       message:
         "We could not end the call. Please try again or contact reception.",
+    };
+  }
+}
+
+export async function endReceptionCallAction() {
+  try {
+    const { provider } = await endPhoneCall();
+
+    return { ok: true, provider };
+  } catch (error) {
+    console.error("[phone] End reception call failed", {
+      provider: process.env.PHONE_PROVIDER?.trim() || "mock",
+      error,
+    });
+
+    if (process.env.PHONE_PROVIDER?.trim().toLowerCase() === "3cx") {
+      await logEvent("call_reception_failed_3cx", "3CX reception failed.");
+    }
+
+    return {
+      ok: false,
+      message: "We could not end the call. Please try again.",
     };
   }
 }
@@ -173,6 +264,35 @@ export async function cancelPhoneCallAction(employeeId: Employee["id"]) {
       ok: false,
       message:
         "We could not end the call. Please try again or contact reception.",
+    };
+  }
+}
+
+export async function cancelReceptionCallAction() {
+  try {
+    const { provider } = await endPhoneCall();
+
+    if (provider === "3cx") {
+      await logEvent(
+        "call_reception_cancelled_3cx",
+        "3CX reception cancelled."
+      );
+    }
+
+    return { ok: true, provider };
+  } catch (error) {
+    console.error("[phone] Cancel reception call failed", {
+      provider: process.env.PHONE_PROVIDER?.trim() || "mock",
+      error,
+    });
+
+    if (process.env.PHONE_PROVIDER?.trim().toLowerCase() === "3cx") {
+      await logEvent("call_reception_failed_3cx", "3CX reception failed.");
+    }
+
+    return {
+      ok: false,
+      message: "We could not end the call. Please try again.",
     };
   }
 }

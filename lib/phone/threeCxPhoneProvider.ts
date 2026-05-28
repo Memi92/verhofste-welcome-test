@@ -1,7 +1,5 @@
 import "server-only";
 
-import type { Employee } from "@/types";
-
 type ThreeCxTokenResponse = {
   access_token?: string;
 };
@@ -25,6 +23,10 @@ type ThreeCxParticipant = {
 
 type ThreeCxCallControlResponse = {
   participants?: ThreeCxParticipant[];
+};
+
+export type PhoneCallDestination = {
+  phone_extension: string;
 };
 
 export class ThreeCxPhoneProviderError extends Error {
@@ -114,7 +116,7 @@ async function getCallControlState() {
   };
 }
 
-export async function callEmployeeWithThreeCx(employee: Employee) {
+export async function callDestinationWithThreeCx(destination: string) {
   const { accessToken, config } = await getAccessToken();
   const response = await fetch(
     `${config.baseUrl}/callcontrol/${encodeURIComponent(
@@ -127,7 +129,7 @@ export async function callEmployeeWithThreeCx(employee: Employee) {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        destination: employee.phone_extension,
+        destination,
       }),
     }
   );
@@ -147,11 +149,11 @@ function statusTextIncludes(status: string, words: string[]) {
 
 function isEmployeeParticipant(
   participant: ThreeCxParticipant,
-  employee: Employee
+  destination: PhoneCallDestination
 ) {
   return [participant.dn, participant.party_dn, participant.party_caller_id]
     .filter(Boolean)
-    .some((value) => value === employee.phone_extension);
+    .some((value) => value === destination.phone_extension);
 }
 
 function isActiveParticipant(participant: ThreeCxParticipant) {
@@ -184,14 +186,14 @@ function findControlParticipant(
 
 function mapParticipantsToStatus(
   participants: ThreeCxParticipant[],
-  employee: Employee
+  destination: PhoneCallDestination
 ): PhoneCallStatus {
   if (participants.length === 0) {
     return "idle";
   }
 
   const relevantParticipants = participants.filter((participant) =>
-    isEmployeeParticipant(participant, employee)
+    isEmployeeParticipant(participant, destination)
   );
   const participantsToInspect =
     relevantParticipants.length > 0 ? relevantParticipants : participants;
@@ -239,10 +241,12 @@ function mapParticipantsToStatus(
   return "calling";
 }
 
-export async function getThreeCxPhoneCallStatus(employee: Employee) {
+export async function getThreeCxPhoneCallStatus(
+  destination: PhoneCallDestination
+) {
   const { participants } = await getCallControlState();
 
-  return mapParticipantsToStatus(participants, employee);
+  return mapParticipantsToStatus(participants, destination);
 }
 
 export async function endThreeCxPhoneCall() {

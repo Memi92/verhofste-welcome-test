@@ -38,17 +38,22 @@ import { Label } from "@/components/ui/label";
 import { OnScreenKeyboard } from "@/components/kiosk/on-screen-keyboard";
 import {
   callEmployeeAction,
+  callReceptionAction,
   cancelPhoneCallAction,
+  cancelReceptionCallAction,
   endPhoneCallAction,
+  endReceptionCallAction,
   getPhoneCallStatusAction,
+  getReceptionCallStatusAction,
   logMockCallEventAction,
+  logThreeCxReceptionStatusEventAction,
   logThreeCxCallStatusEventAction,
 } from "@/app/visitor/actions";
-import { callReceptionMock } from "@/lib/mockHardware";
 import type { Employee } from "@/types";
 
 type VisitorFlowProps = {
   employees: Employee[];
+  initialMode?: "employee" | "reception";
 };
 
 type MockCallStatus =
@@ -65,7 +70,7 @@ type ActivePhoneProvider = "mock" | "3cx";
 const NO_ANSWER_TIMEOUT_MS = 5000;
 const NO_ANSWER_DECISION_TIMEOUT_SECONDS = 20;
 const ENDED_CALL_RETURN_TIMEOUT_SECONDS = 10;
-const THREECX_STATUS_POLL_INTERVAL_MS = 1000;
+const THREECX_STATUS_POLL_INTERVAL_MS = 12000;
 
 const callStatusCopy: Record<
   MockCallStatus,
@@ -97,7 +102,40 @@ const callStatusCopy: Record<
   },
 };
 
-export function VisitorFlow({ employees }: VisitorFlowProps) {
+const receptionStatusCopy: Record<
+  MockCallStatus,
+  { title: string; description: string }
+> = {
+  calling: {
+    title: "Notifying reception...",
+    description: "We are preparing the call request.",
+  },
+  ringing: {
+    title: "Calling reception...",
+    description: "Please wait while reception is notified.",
+  },
+  connected: {
+    title: "Connected to reception. You may speak now.",
+    description: "The call will stay open until you end it.",
+  },
+  ended: {
+    title: "Call ended. Thank you.",
+    description: "The call has finished.",
+  },
+  cancelled: {
+    title: "Call cancelled.",
+    description: "No further call action is running.",
+  },
+  failed: {
+    title: "We could not notify reception. Please try again.",
+    description: "The call request failed.",
+  },
+};
+
+export function VisitorFlow({
+  employees,
+  initialMode = "employee",
+}: VisitorFlowProps) {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("all");
@@ -105,8 +143,13 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     null
   );
+  const [isReceptionSelected, setIsReceptionSelected] = useState(
+    initialMode === "reception"
+  );
   const [callStatus, setCallStatus] = useState<MockCallStatus | null>(null);
-  const [callTarget, setCallTarget] = useState<MockCallTarget>("employee");
+  const [callTarget, setCallTarget] = useState<MockCallTarget>(
+    initialMode === "reception" ? "reception" : "employee"
+  );
   const [activePhoneProvider, setActivePhoneProvider] =
     useState<ActivePhoneProvider>("mock");
   const [isEndingCall, setIsEndingCall] = useState(false);
@@ -150,6 +193,28 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     );
   }
 
+  function logThreeCxReceptionConnectedOnce() {
+    if (hasLoggedThreeCxConnectedRef.current) {
+      return;
+    }
+
+    hasLoggedThreeCxConnectedRef.current = true;
+    void logThreeCxReceptionStatusEventAction(
+      "call_reception_connected_3cx"
+    ).catch(() => undefined);
+  }
+
+  function logThreeCxReceptionEndedOnce() {
+    if (hasLoggedThreeCxEndedRef.current) {
+      return;
+    }
+
+    hasLoggedThreeCxEndedRef.current = true;
+    void logThreeCxReceptionStatusEventAction(
+      "call_reception_ended_3cx"
+    ).catch(() => undefined);
+  }
+
   useEffect(() => {
     return () => {
       clearCallTimers();
@@ -191,8 +256,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     callRunIdRef.current += 1;
     clearCallTimers();
     setSelectedEmployee(null);
+    setIsReceptionSelected(initialMode === "reception");
     setCallStatus(null);
-    setCallTarget("employee");
+    setCallTarget(initialMode === "reception" ? "reception" : "employee");
     setActivePhoneProvider("mock");
     setIsEndingCall(false);
     setIsNoAnswerOpen(false);
@@ -200,6 +266,11 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
     hasLoggedThreeCxConnectedRef.current = false;
     hasLoggedThreeCxEndedRef.current = false;
+  }
+
+  function resetToStart() {
+    resetFlow();
+    router.push("/");
   }
 
   function scheduleMockCallTimers(callRunId: number) {
@@ -273,6 +344,49 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     }
   }
 
+  function applyThreeCxReceptionStatus(
+    callRunId: number,
+    status: Awaited<ReturnType<typeof getReceptionCallStatusAction>>["status"]
+  ) {
+    if (callRunIdRef.current !== callRunId) {
+      return;
+    }
+
+    if (status === "connected") {
+      setIsNoAnswerOpen(false);
+      setCallStatus("connected");
+      logThreeCxReceptionConnectedOnce();
+      return;
+    }
+
+    if (
+      (status === "ended" || status === "idle") &&
+      hasLoggedThreeCxConnectedRef.current
+    ) {
+      clearCallTimers();
+      setIsNoAnswerOpen(false);
+      setCallStatus("ended");
+      setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+      logThreeCxReceptionEndedOnce();
+      return;
+    }
+
+    if (status === "failed") {
+      clearCallTimers();
+      setCallStatus("failed");
+      return;
+    }
+
+    if (status === "ringing") {
+      setCallStatus("ringing");
+      return;
+    }
+
+    if (status === "calling") {
+      setCallStatus("calling");
+    }
+  }
+
   function pollThreeCxStatus(employee: Employee, callRunId: number) {
     void getPhoneCallStatusAction(employee.id)
       .then((result) => {
@@ -284,6 +398,19 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
       })
       .catch(() => {
         applyThreeCxStatus(employee, callRunId, "failed");
+      });
+  }
+
+  function pollThreeCxReceptionStatus(callRunId: number) {
+    void getReceptionCallStatusAction()
+      .then((result) => {
+        applyThreeCxReceptionStatus(
+          callRunId,
+          result.ok ? result.status : "failed"
+        );
+      })
+      .catch(() => {
+        applyThreeCxReceptionStatus(callRunId, "failed");
       });
   }
 
@@ -326,6 +453,38 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
             applyThreeCxStatus(employee, callRunId, "failed");
           });
       }, NO_ANSWER_TIMEOUT_MS)
+    );
+  }
+
+  function scheduleThreeCxReceptionStatusPolling(callRunId: number) {
+    setCallStatus("ringing");
+    pollThreeCxReceptionStatus(callRunId);
+
+    timersRef.current.push(
+      setInterval(() => {
+        pollThreeCxReceptionStatus(callRunId);
+      }, THREECX_STATUS_POLL_INTERVAL_MS)
+    );
+  }
+
+  function scheduleMockReceptionTimers(callRunId: number) {
+    timersRef.current.push(
+      setTimeout(() => {
+        if (callRunIdRef.current === callRunId) {
+          setCallStatus("ringing");
+        }
+      }, 1000)
+    );
+
+    timersRef.current.push(
+      setTimeout(() => {
+        if (callRunIdRef.current === callRunId) {
+          setCallStatus("connected");
+          void logMockCallEventAction("call_connected_mock", null).catch(
+            () => undefined
+          );
+        }
+      }, 2000)
     );
   }
 
@@ -372,8 +531,77 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     });
   }
 
+  function startReceptionCall() {
+    callRunIdRef.current += 1;
+    clearCallTimers();
+
+    const callRunId = callRunIdRef.current;
+
+    setSelectedEmployee(null);
+    setIsReceptionSelected(true);
+    setCallTarget("reception");
+    setIsNoAnswerOpen(false);
+    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
+    setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+    setCallStatus("calling");
+    setActivePhoneProvider("mock");
+    setIsEndingCall(false);
+    hasLoggedThreeCxConnectedRef.current = false;
+    hasLoggedThreeCxEndedRef.current = false;
+
+    callReceptionAction()
+      .then((result) => {
+        if (!result.ok && callRunIdRef.current === callRunId) {
+          clearCallTimers();
+          setCallStatus("failed");
+        }
+
+        if (callRunIdRef.current !== callRunId || !result.ok) {
+          return;
+        }
+
+        if (result.provider === "3cx") {
+          setActivePhoneProvider("3cx");
+          scheduleThreeCxReceptionStatusPolling(callRunId);
+          return;
+        }
+
+        setActivePhoneProvider("mock");
+        scheduleMockReceptionTimers(callRunId);
+      })
+      .catch(() => {
+        if (callRunIdRef.current === callRunId) {
+          clearCallTimers();
+          setCallStatus("failed");
+        }
+      });
+  }
+
   function cancelMockCall() {
     const employeeId = selectedEmployee?.id;
+
+    if (callTarget === "reception") {
+      if (activePhoneProvider === "3cx") {
+        setIsEndingCall(true);
+        void cancelReceptionCallAction()
+          .catch(() => undefined)
+          .finally(() => {
+            callRunIdRef.current += 1;
+            clearCallTimers();
+            setIsEndingCall(false);
+            router.push("/");
+          });
+        return;
+      }
+
+      callRunIdRef.current += 1;
+      clearCallTimers();
+      setCallStatus("cancelled");
+      void logMockCallEventAction("call_cancelled_mock", null).catch(
+        () => undefined
+      );
+      return;
+    }
 
     if (activePhoneProvider === "3cx" && employeeId) {
       setIsEndingCall(true);
@@ -402,6 +630,44 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   function endMockCall() {
     const employeeId =
       callTarget === "employee" ? selectedEmployee?.id ?? null : null;
+
+    if (callTarget === "reception") {
+      if (activePhoneProvider === "3cx") {
+        setIsEndingCall(true);
+        void endReceptionCallAction()
+          .then((result) => {
+            if (!result.ok) {
+              clearCallTimers();
+              setCallStatus("failed");
+              return;
+            }
+
+            callRunIdRef.current += 1;
+            clearCallTimers();
+            setIsNoAnswerOpen(false);
+            setCallStatus("ended");
+            setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+            logThreeCxReceptionEndedOnce();
+          })
+          .catch(() => {
+            clearCallTimers();
+            setCallStatus("failed");
+          })
+          .finally(() => {
+            setIsEndingCall(false);
+          });
+        return;
+      }
+
+      callRunIdRef.current += 1;
+      clearCallTimers();
+      setCallStatus("ended");
+      setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+      void logMockCallEventAction("call_ended_mock", null).catch(
+        () => undefined
+      );
+      return;
+    }
 
     if (activePhoneProvider === "3cx" && employeeId) {
       setIsEndingCall(true);
@@ -435,7 +701,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setCallStatus("ended");
     setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
 
-    if (employeeId || callTarget === "reception") {
+    if (employeeId) {
       void logMockCallEventAction("call_ended_mock", employeeId).catch(
         () => undefined
       );
@@ -458,36 +724,21 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   }
 
   function callReceptionFallback() {
-    callRunIdRef.current += 1;
+    const previousEmployeeId = selectedEmployee?.id;
+
     clearCallTimers();
     setIsNoAnswerOpen(false);
     setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
+
+    if (activePhoneProvider === "3cx" && previousEmployeeId) {
+      void cancelPhoneCallAction(previousEmployeeId).finally(() => {
+        startReceptionCall();
+      });
+      return;
+    }
+
     logEmployeeCallCancelled();
-
-    const callRunId = callRunIdRef.current;
-
-    setCallTarget("reception");
-    setCallStatus("calling");
-    void logMockCallEventAction("call_reception_mock", null).catch(
-      () => undefined
-    );
-
-    callReceptionMock().catch(() => {
-      if (callRunIdRef.current === callRunId) {
-        setCallStatus("failed");
-      }
-    });
-
-    timersRef.current.push(
-      setTimeout(() => {
-        if (callRunIdRef.current === callRunId) {
-          setCallStatus("connected");
-          void logMockCallEventAction("call_connected_mock", null).catch(
-            () => undefined
-          );
-        }
-      }, 2000)
-    );
+    startReceptionCall();
   }
 
   function noAnswerBackToStart() {
@@ -559,8 +810,10 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     };
   }, [callStatus, endedCountdown, router]);
 
-  if (selectedEmployee) {
+  if (selectedEmployee || isReceptionSelected) {
     const hasCallStarted = callStatus !== null;
+    const statusCopy =
+      callTarget === "reception" ? receptionStatusCopy : callStatusCopy;
 
     return (
       <main className="min-h-dvh bg-stone-50 px-5 py-6 text-neutral-950 sm:px-8">
@@ -570,9 +823,12 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
             variant="ghost"
             className="mb-6 h-12 w-fit rounded-[8px] px-4 text-base"
           >
-            <Link href="/visitor" onClick={resetFlow}>
+            <Link
+              href={callTarget === "reception" ? "/" : "/visitor"}
+              onClick={resetFlow}
+            >
               <ArrowLeft className="size-5" aria-hidden="true" />
-              Choose another employee
+              {callTarget === "reception" ? "Back" : "Choose another employee"}
             </Link>
           </Button>
 
@@ -586,20 +842,18 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                 )}
               </div>
               <CardTitle className="text-3xl font-semibold md:text-4xl">
-                {callTarget === "reception" &&
-                (callStatus === "calling" || callStatus === "ringing")
-                  ? "Calling reception..."
-                  : hasCallStarted
-                    ? callStatusCopy[callStatus].title
+                {hasCallStarted
+                  ? statusCopy[callStatus].title
+                  : callTarget === "reception"
+                    ? "Call reception"
                     : "Confirm your host"}
               </CardTitle>
               <CardDescription className="mx-auto max-w-2xl text-lg leading-7">
                 {hasCallStarted
-                  ? callTarget === "reception" &&
-                    (callStatus === "calling" || callStatus === "ringing")
-                    ? "We are placing a mocked call to reception."
-                    : callStatusCopy[callStatus].description
-                  : "Please confirm before starting the mocked call."}
+                  ? statusCopy[callStatus].description
+                  : callTarget === "reception"
+                    ? "We will notify reception that you are here."
+                    : "Please confirm before starting the mocked call."}
               </CardDescription>
             </CardHeader>
 
@@ -608,7 +862,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                 <p className="text-3xl font-semibold text-neutral-950">
                   {callTarget === "reception"
                     ? "Reception"
-                    : selectedEmployee.name}
+                    : selectedEmployee?.name}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
                   <Badge
@@ -617,7 +871,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   >
                     {callTarget === "reception"
                       ? "Reception"
-                      : selectedEmployee.department}
+                      : selectedEmployee?.department}
                   </Badge>
                   <Badge
                     variant="secondary"
@@ -625,7 +879,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   >
                     {callTarget === "reception"
                       ? "Front desk"
-                      : selectedEmployee.function}
+                      : selectedEmployee?.function}
                   </Badge>
                   <Badge
                     variant="outline"
@@ -633,7 +887,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   >
                     {callTarget === "reception"
                       ? "Fallback call"
-                      : `Extension ${selectedEmployee.phone_extension}`}
+                      : `Extension ${selectedEmployee?.phone_extension}`}
                   </Badge>
                 </div>
               </div>
@@ -643,7 +897,16 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   <Button
                     type="button"
                     className="h-16 rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
-                    onClick={() => startMockCall(selectedEmployee)}
+                    onClick={() => {
+                      if (callTarget === "reception") {
+                        startReceptionCall();
+                        return;
+                      }
+
+                      if (selectedEmployee) {
+                        startMockCall(selectedEmployee);
+                      }
+                    }}
                   >
                     Call
                   </Button>
@@ -651,7 +914,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                     type="button"
                     variant="outline"
                     className="h-16 rounded-[8px] text-lg"
-                    onClick={resetFlow}
+                    onClick={callTarget === "reception" ? resetToStart : resetFlow}
                   >
                     Go back
                   </Button>
@@ -680,8 +943,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                       : "Mock call failed"}
                   </AlertTitle>
                   <AlertDescription>
-                    We could not notify your host. Please try again or contact
-                    reception.
+                    {callTarget === "reception"
+                      ? "We could not notify reception. Please try again."
+                      : "We could not notify your host. Please try again or contact reception."}
                   </AlertDescription>
                 </Alert>
               ) : null}
@@ -717,7 +981,16 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                     type="button"
                     variant="outline"
                     className="h-16 rounded-[8px] text-lg"
-                    onClick={() => startMockCall(selectedEmployee)}
+                    onClick={() => {
+                      if (callTarget === "reception") {
+                        startReceptionCall();
+                        return;
+                      }
+
+                      if (selectedEmployee) {
+                        startMockCall(selectedEmployee);
+                      }
+                    }}
                   >
                     Try again
                   </Button>
