@@ -70,7 +70,7 @@ type ActivePhoneProvider = "mock" | "3cx";
 const NO_ANSWER_TIMEOUT_MS = 5000;
 const NO_ANSWER_DECISION_TIMEOUT_SECONDS = 20;
 const ENDED_CALL_RETURN_TIMEOUT_SECONDS = 10;
-const THREECX_STATUS_POLL_INTERVAL_MS = 12000;
+const THREECX_STATUS_POLL_INTERVAL_MS = 1000;
 
 const callStatusCopy: Record<
   MockCallStatus,
