@@ -38,6 +38,8 @@ import { Label } from "@/components/ui/label";
 import { OnScreenKeyboard } from "@/components/kiosk/on-screen-keyboard";
 import {
   callEmployeeAction,
+  cancelPhoneCallAction,
+  endPhoneCallAction,
   getPhoneCallStatusAction,
   logMockCallEventAction,
   logThreeCxCallStatusEventAction,
@@ -58,6 +60,7 @@ type MockCallStatus =
   | "failed";
 
 type MockCallTarget = "employee" | "reception";
+type ActivePhoneProvider = "mock" | "3cx";
 
 const NO_ANSWER_TIMEOUT_MS = 5000;
 const NO_ANSWER_DECISION_TIMEOUT_SECONDS = 20;
@@ -78,19 +81,19 @@ const callStatusCopy: Record<
   },
   connected: {
     title: "Connected. You may speak now.",
-    description: "The mock call will stay open until you end it.",
+    description: "The call will stay open until you end it.",
   },
   ended: {
     title: "Call ended. Thank you.",
-    description: "The mocked call lifecycle has finished.",
+    description: "The call has finished.",
   },
   cancelled: {
     title: "Call cancelled.",
-    description: "No further mock call action is running.",
+    description: "No further call action is running.",
   },
   failed: {
     title: "We could not notify your host. Please try again or contact reception.",
-    description: "The mocked call request failed.",
+    description: "The call request failed.",
   },
 };
 
@@ -104,6 +107,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   );
   const [callStatus, setCallStatus] = useState<MockCallStatus | null>(null);
   const [callTarget, setCallTarget] = useState<MockCallTarget>("employee");
+  const [activePhoneProvider, setActivePhoneProvider] =
+    useState<ActivePhoneProvider>("mock");
+  const [isEndingCall, setIsEndingCall] = useState(false);
   const [isNoAnswerOpen, setIsNoAnswerOpen] = useState(false);
   const [noAnswerDecisionCountdown, setNoAnswerDecisionCountdown] = useState(
     NO_ANSWER_DECISION_TIMEOUT_SECONDS
@@ -187,6 +193,8 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setSelectedEmployee(null);
     setCallStatus(null);
     setCallTarget("employee");
+    setActivePhoneProvider("mock");
+    setIsEndingCall(false);
     setIsNoAnswerOpen(false);
     setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
     setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
@@ -333,6 +341,8 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
     setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
     setCallStatus("calling");
+    setActivePhoneProvider("mock");
+    setIsEndingCall(false);
     hasLoggedThreeCxConnectedRef.current = false;
     hasLoggedThreeCxEndedRef.current = false;
 
@@ -347,10 +357,12 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
       }
 
       if (result.provider === "3cx") {
+        setActivePhoneProvider("3cx");
         scheduleThreeCxStatusPolling(employee, callRunId);
         return;
       }
 
+      setActivePhoneProvider("mock");
       scheduleMockCallTimers(callRunId);
     }).catch(() => {
       if (callRunIdRef.current === callRunId) {
@@ -362,6 +374,19 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
 
   function cancelMockCall() {
     const employeeId = selectedEmployee?.id;
+
+    if (activePhoneProvider === "3cx" && employeeId) {
+      setIsEndingCall(true);
+      void cancelPhoneCallAction(employeeId)
+        .catch(() => undefined)
+        .finally(() => {
+          callRunIdRef.current += 1;
+          clearCallTimers();
+          setIsEndingCall(false);
+          router.push("/");
+        });
+      return;
+    }
 
     callRunIdRef.current += 1;
     clearCallTimers();
@@ -378,6 +403,33 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     const employeeId =
       callTarget === "employee" ? selectedEmployee?.id ?? null : null;
 
+    if (activePhoneProvider === "3cx" && employeeId) {
+      setIsEndingCall(true);
+      void endPhoneCallAction(employeeId)
+        .then((result) => {
+          if (!result.ok) {
+            clearCallTimers();
+            setCallStatus("failed");
+            return;
+          }
+
+          callRunIdRef.current += 1;
+          clearCallTimers();
+          setIsNoAnswerOpen(false);
+          setCallStatus("ended");
+          setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+          logThreeCxEndedOnce(employeeId);
+        })
+        .catch(() => {
+          clearCallTimers();
+          setCallStatus("failed");
+        })
+        .finally(() => {
+          setIsEndingCall(false);
+        });
+      return;
+    }
+
     callRunIdRef.current += 1;
     clearCallTimers();
     setCallStatus("ended");
@@ -392,6 +444,11 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
 
   function logEmployeeCallCancelled() {
     const employeeId = selectedEmployee?.id;
+
+    if (employeeId && activePhoneProvider === "3cx") {
+      void cancelPhoneCallAction(employeeId).catch(() => undefined);
+      return;
+    }
 
     if (employeeId) {
       void logMockCallEventAction("call_cancelled_mock", employeeId).catch(
@@ -454,10 +511,16 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
         setIsNoAnswerOpen(false);
         setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
 
-        void logMockCallEventAction(
-          "call_no_answer_timeout_mock",
-          selectedEmployee?.id ?? null
-        ).catch(() => undefined);
+        if (activePhoneProvider === "3cx" && selectedEmployee?.id) {
+          void cancelPhoneCallAction(selectedEmployee.id).catch(
+            () => undefined
+          );
+        } else {
+          void logMockCallEventAction(
+            "call_no_answer_timeout_mock",
+            selectedEmployee?.id ?? null
+          ).catch(() => undefined);
+        }
 
         router.push("/");
         return;
@@ -469,7 +532,13 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     return () => {
       clearTimeout(timer);
     };
-  }, [isNoAnswerOpen, noAnswerDecisionCountdown, router, selectedEmployee?.id]);
+  }, [
+    activePhoneProvider,
+    isNoAnswerOpen,
+    noAnswerDecisionCountdown,
+    router,
+    selectedEmployee?.id,
+  ]);
 
   useEffect(() => {
     if (callStatus !== "ended") {
@@ -592,7 +661,11 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
               {callStatus === "connected" ? (
                 <Alert className="rounded-[8px] border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
                   <CheckCircle2 className="size-5" aria-hidden="true" />
-                  <AlertTitle>Mock call connected</AlertTitle>
+                  <AlertTitle>
+                    {activePhoneProvider === "3cx"
+                      ? "Call connected"
+                      : "Mock call connected"}
+                  </AlertTitle>
                   <AlertDescription className="text-emerald-800">
                     Stay on this screen while speaking with your host.
                   </AlertDescription>
@@ -601,7 +674,11 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
 
               {callStatus === "failed" ? (
                 <Alert variant="destructive" className="rounded-[8px] p-4">
-                  <AlertTitle>Mock call failed</AlertTitle>
+                  <AlertTitle>
+                    {activePhoneProvider === "3cx"
+                      ? "Call failed"
+                      : "Mock call failed"}
+                  </AlertTitle>
                   <AlertDescription>
                     We could not notify your host. Please try again or contact
                     reception.
@@ -615,6 +692,7 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   variant="outline"
                   className="h-16 w-full rounded-[8px] text-lg"
                   onClick={cancelMockCall}
+                  disabled={isEndingCall}
                 >
                   Cancel
                 </Button>
@@ -625,8 +703,9 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
                   type="button"
                   className="h-16 w-full rounded-[8px] bg-neutral-950 text-lg text-white hover:bg-neutral-800"
                   onClick={endMockCall}
+                  disabled={isEndingCall}
                 >
-                  End mock call
+                  {activePhoneProvider === "3cx" ? "End call" : "End mock call"}
                 </Button>
               ) : null}
 

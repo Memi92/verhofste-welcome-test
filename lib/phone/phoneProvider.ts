@@ -3,6 +3,7 @@ import "server-only";
 import { callEmployeeWithMock } from "@/lib/phone/mockPhoneProvider";
 import {
   callEmployeeWithThreeCx,
+  endThreeCxPhoneCall,
   getThreeCxPhoneCallStatus,
   type PhoneCallStatus,
 } from "@/lib/phone/threeCxPhoneProvider";
@@ -36,4 +37,15 @@ export async function getPhoneCallStatus(
   }
 
   return getThreeCxPhoneCallStatus(employee);
+}
+
+export async function endPhoneCall() {
+  const provider = getPhoneProvider();
+
+  if (provider === "3cx") {
+    await endThreeCxPhoneCall();
+    return { provider };
+  }
+
+  return { provider };
 }

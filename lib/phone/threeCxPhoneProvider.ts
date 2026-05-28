@@ -15,10 +15,12 @@ export type PhoneCallStatus =
   | "failed";
 
 type ThreeCxParticipant = {
+  id?: number;
   status?: string;
   dn?: string;
   party_dn?: string;
   party_caller_id?: string;
+  direct_control?: boolean;
 };
 
 type ThreeCxCallControlResponse = {
@@ -82,6 +84,36 @@ async function getAccessToken() {
   return { accessToken: tokenResponse.access_token, config };
 }
 
+async function getCallControlState() {
+  const { accessToken, config } = await getAccessToken();
+  const response = await fetch(
+    `${config.baseUrl}/callcontrol/${encodeURIComponent(
+      config.controlExtension
+    )}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new ThreeCxPhoneProviderError(
+      `3CX status lookup failed with status ${response.status}.`
+    );
+  }
+
+  const callControlResponse =
+    (await response.json()) as ThreeCxCallControlResponse;
+
+  return {
+    accessToken,
+    config,
+    participants: callControlResponse.participants ?? [],
+  };
+}
+
 export async function callEmployeeWithThreeCx(employee: Employee) {
   const { accessToken, config } = await getAccessToken();
   const response = await fetch(
@@ -120,6 +152,34 @@ function isEmployeeParticipant(
   return [participant.dn, participant.party_dn, participant.party_caller_id]
     .filter(Boolean)
     .some((value) => value === employee.phone_extension);
+}
+
+function isActiveParticipant(participant: ThreeCxParticipant) {
+  const status = participant.status ?? "";
+
+  return !statusTextIncludes(status, [
+    "ended",
+    "terminated",
+    "disconnected",
+    "failed",
+  ]);
+}
+
+function findControlParticipant(
+  participants: ThreeCxParticipant[],
+  controlExtension: string
+) {
+  const activeParticipants = participants.filter(
+    (participant) =>
+      typeof participant.id === "number" && isActiveParticipant(participant)
+  );
+
+  return (
+    activeParticipants.find((participant) => participant.dn === controlExtension) ??
+    activeParticipants.find((participant) => participant.direct_control) ??
+    activeParticipants[0] ??
+    null
+  );
 }
 
 function mapParticipantsToStatus(
@@ -180,30 +240,39 @@ function mapParticipantsToStatus(
 }
 
 export async function getThreeCxPhoneCallStatus(employee: Employee) {
-  const { accessToken, config } = await getAccessToken();
+  const { participants } = await getCallControlState();
+
+  return mapParticipantsToStatus(participants, employee);
+}
+
+export async function endThreeCxPhoneCall() {
+  const { accessToken, config, participants } = await getCallControlState();
+  const participant = findControlParticipant(
+    participants,
+    config.controlExtension
+  );
+
+  if (!participant) {
+    return { ended: true };
+  }
+
   const response = await fetch(
     `${config.baseUrl}/callcontrol/${encodeURIComponent(
       config.controlExtension
-    )}`,
+    )}/participants/${encodeURIComponent(String(participant.id))}/drop`,
     {
-      method: "GET",
+      method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
     }
   );
 
-  if (!response.ok) {
+  if (!response.ok && response.status !== 404) {
     throw new ThreeCxPhoneProviderError(
-      `3CX status lookup failed with status ${response.status}.`
+      `3CX call drop failed with status ${response.status}.`
     );
   }
 
-  const callControlResponse =
-    (await response.json()) as ThreeCxCallControlResponse;
-
-  return mapParticipantsToStatus(
-    callControlResponse.participants ?? [],
-    employee
-  );
+  return { ended: true };
 }
