@@ -36,8 +36,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { OnScreenKeyboard } from "@/components/kiosk/on-screen-keyboard";
-import { logMockCallEventAction } from "@/app/visitor/actions";
-import { callEmployeeMock, callReceptionMock } from "@/lib/mockHardware";
+import {
+  callEmployeeAction,
+  logMockCallEventAction,
+} from "@/app/visitor/actions";
+import { callReceptionMock } from "@/lib/mockHardware";
 import type { Employee } from "@/types";
 
 type VisitorFlowProps = {
@@ -174,10 +177,6 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
     setCallStatus("calling");
 
-    void logMockCallEventAction("call_employee_mock", employee.id).catch(
-      () => undefined
-    );
-
     // TODO: Future 3CX integration should provide real ringing, connected,
     // ended, and failed states instead of these local mock timers.
     timersRef.current.push(
@@ -207,7 +206,12 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
       }, NO_ANSWER_TIMEOUT_MS)
     );
 
-    callEmployeeMock(employee.id).catch(() => {
+    callEmployeeAction(employee.id).then((result) => {
+      if (!result.ok && callRunIdRef.current === callRunId) {
+        clearCallTimers();
+        setCallStatus("failed");
+      }
+    }).catch(() => {
       if (callRunIdRef.current === callRunId) {
         clearCallTimers();
         setCallStatus("failed");
