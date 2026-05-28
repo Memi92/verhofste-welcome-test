@@ -6,6 +6,25 @@ type ThreeCxTokenResponse = {
   access_token?: string;
 };
 
+export type PhoneCallStatus =
+  | "idle"
+  | "calling"
+  | "ringing"
+  | "connected"
+  | "ended"
+  | "failed";
+
+type ThreeCxParticipant = {
+  status?: string;
+  dn?: string;
+  party_dn?: string;
+  party_caller_id?: string;
+};
+
+type ThreeCxCallControlResponse = {
+  participants?: ThreeCxParticipant[];
+};
+
 export class ThreeCxPhoneProviderError extends Error {
   constructor(message: string) {
     super(message);
@@ -86,4 +105,105 @@ export async function callEmployeeWithThreeCx(employee: Employee) {
       `3CX makecall failed with status ${response.status}.`
     );
   }
+}
+
+function statusTextIncludes(status: string, words: string[]) {
+  const normalizedStatus = status.toLowerCase();
+
+  return words.some((word) => normalizedStatus.includes(word));
+}
+
+function isEmployeeParticipant(
+  participant: ThreeCxParticipant,
+  employee: Employee
+) {
+  return [participant.dn, participant.party_dn, participant.party_caller_id]
+    .filter(Boolean)
+    .some((value) => value === employee.phone_extension);
+}
+
+function mapParticipantsToStatus(
+  participants: ThreeCxParticipant[],
+  employee: Employee
+): PhoneCallStatus {
+  if (participants.length === 0) {
+    return "idle";
+  }
+
+  const relevantParticipants = participants.filter((participant) =>
+    isEmployeeParticipant(participant, employee)
+  );
+  const participantsToInspect =
+    relevantParticipants.length > 0 ? relevantParticipants : participants;
+  const statuses = participantsToInspect.map(
+    (participant) => participant.status ?? ""
+  );
+
+  if (
+    statuses.some((status) =>
+      statusTextIncludes(status, [
+        "connected",
+        "talking",
+        "answered",
+        "established",
+      ])
+    )
+  ) {
+    return "connected";
+  }
+
+  if (
+    statuses.some((status) =>
+      statusTextIncludes(status, ["ringing", "ring", "alerting"])
+    )
+  ) {
+    return "ringing";
+  }
+
+  if (
+    statuses.some((status) =>
+      statusTextIncludes(status, ["dialing", "calling", "trying", "pending"])
+    )
+  ) {
+    return "calling";
+  }
+
+  if (
+    statuses.some((status) =>
+      statusTextIncludes(status, ["ended", "terminated", "disconnected"])
+    )
+  ) {
+    return "ended";
+  }
+
+  return "calling";
+}
+
+export async function getThreeCxPhoneCallStatus(employee: Employee) {
+  const { accessToken, config } = await getAccessToken();
+  const response = await fetch(
+    `${config.baseUrl}/callcontrol/${encodeURIComponent(
+      config.controlExtension
+    )}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    }
+  );
+
+  if (!response.ok) {
+    throw new ThreeCxPhoneProviderError(
+      `3CX status lookup failed with status ${response.status}.`
+    );
+  }
+
+  const callControlResponse =
+    (await response.json()) as ThreeCxCallControlResponse;
+
+  return mapParticipantsToStatus(
+    callControlResponse.participants ?? [],
+    employee
+  );
 }

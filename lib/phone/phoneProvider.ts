@@ -1,7 +1,11 @@
 import "server-only";
 
 import { callEmployeeWithMock } from "@/lib/phone/mockPhoneProvider";
-import { callEmployeeWithThreeCx } from "@/lib/phone/threeCxPhoneProvider";
+import {
+  callEmployeeWithThreeCx,
+  getThreeCxPhoneCallStatus,
+  type PhoneCallStatus,
+} from "@/lib/phone/threeCxPhoneProvider";
 import type { Employee } from "@/types";
 
 export type PhoneProvider = "mock" | "3cx";
@@ -22,4 +26,14 @@ export async function callEmployee(employee: Employee) {
 
   await callEmployeeWithMock(employee);
   return { provider };
+}
+
+export async function getPhoneCallStatus(
+  employee: Employee
+): Promise<PhoneCallStatus | null> {
+  if (getPhoneProvider() !== "3cx") {
+    return null;
+  }
+
+  return getThreeCxPhoneCallStatus(employee);
 }

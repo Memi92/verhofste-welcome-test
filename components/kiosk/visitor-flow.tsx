@@ -38,7 +38,9 @@ import { Label } from "@/components/ui/label";
 import { OnScreenKeyboard } from "@/components/kiosk/on-screen-keyboard";
 import {
   callEmployeeAction,
+  getPhoneCallStatusAction,
   logMockCallEventAction,
+  logThreeCxCallStatusEventAction,
 } from "@/app/visitor/actions";
 import { callReceptionMock } from "@/lib/mockHardware";
 import type { Employee } from "@/types";
@@ -60,6 +62,7 @@ type MockCallTarget = "employee" | "reception";
 const NO_ANSWER_TIMEOUT_MS = 5000;
 const NO_ANSWER_DECISION_TIMEOUT_SECONDS = 20;
 const ENDED_CALL_RETURN_TIMEOUT_SECONDS = 10;
+const THREECX_STATUS_POLL_INTERVAL_MS = 1000;
 
 const callStatusCopy: Record<
   MockCallStatus,
@@ -110,10 +113,35 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
   );
   const callRunIdRef = useRef(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const hasLoggedThreeCxConnectedRef = useRef(false);
+  const hasLoggedThreeCxEndedRef = useRef(false);
 
   function clearCallTimers() {
     timersRef.current.forEach((timer) => clearTimeout(timer));
     timersRef.current = [];
+  }
+
+  function logThreeCxConnectedOnce(employeeId: Employee["id"]) {
+    if (hasLoggedThreeCxConnectedRef.current) {
+      return;
+    }
+
+    hasLoggedThreeCxConnectedRef.current = true;
+    void logThreeCxCallStatusEventAction(
+      "call_connected_3cx",
+      employeeId
+    ).catch(() => undefined);
+  }
+
+  function logThreeCxEndedOnce(employeeId: Employee["id"]) {
+    if (hasLoggedThreeCxEndedRef.current) {
+      return;
+    }
+
+    hasLoggedThreeCxEndedRef.current = true;
+    void logThreeCxCallStatusEventAction("call_ended_3cx", employeeId).catch(
+      () => undefined
+    );
   }
 
   useEffect(() => {
@@ -162,23 +190,11 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
     setIsNoAnswerOpen(false);
     setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
     setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+    hasLoggedThreeCxConnectedRef.current = false;
+    hasLoggedThreeCxEndedRef.current = false;
   }
 
-  function startMockCall(employee: Employee) {
-    callRunIdRef.current += 1;
-    clearCallTimers();
-
-    const callRunId = callRunIdRef.current;
-
-    setSelectedEmployee(employee);
-    setCallTarget("employee");
-    setIsNoAnswerOpen(false);
-    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
-    setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
-    setCallStatus("calling");
-
-    // TODO: Future 3CX integration should provide real ringing, connected,
-    // ended, and failed states instead of these local mock timers.
+  function scheduleMockCallTimers(callRunId: number) {
     timersRef.current.push(
       setTimeout(() => {
         if (callRunIdRef.current === callRunId) {
@@ -187,8 +203,6 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
       }, 1000)
     );
 
-    // TODO: This 5s no-answer timeout is mock-only. Real 3CX timeout should
-    // be configurable, likely around 20-30 seconds.
     timersRef.current.push(
       setTimeout(() => {
         if (callRunIdRef.current === callRunId) {
@@ -205,12 +219,139 @@ export function VisitorFlow({ employees }: VisitorFlowProps) {
         }
       }, NO_ANSWER_TIMEOUT_MS)
     );
+  }
+
+  function applyThreeCxStatus(
+    employee: Employee,
+    callRunId: number,
+    status: Awaited<ReturnType<typeof getPhoneCallStatusAction>>["status"]
+  ) {
+    if (callRunIdRef.current !== callRunId) {
+      return;
+    }
+
+    if (status === "connected") {
+      setIsNoAnswerOpen(false);
+      setCallStatus("connected");
+      logThreeCxConnectedOnce(employee.id);
+      return;
+    }
+
+    if (
+      (status === "ended" || status === "idle") &&
+      hasLoggedThreeCxConnectedRef.current
+    ) {
+      clearCallTimers();
+      setIsNoAnswerOpen(false);
+      setCallStatus("ended");
+      setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+      logThreeCxEndedOnce(employee.id);
+      return;
+    }
+
+    if (status === "failed") {
+      clearCallTimers();
+      setCallStatus("failed");
+      return;
+    }
+
+    if (status === "ringing") {
+      setCallStatus("ringing");
+      return;
+    }
+
+    if (status === "calling") {
+      setCallStatus("calling");
+    }
+  }
+
+  function pollThreeCxStatus(employee: Employee, callRunId: number) {
+    void getPhoneCallStatusAction(employee.id)
+      .then((result) => {
+        applyThreeCxStatus(
+          employee,
+          callRunId,
+          result.ok ? result.status : "failed"
+        );
+      })
+      .catch(() => {
+        applyThreeCxStatus(employee, callRunId, "failed");
+      });
+  }
+
+  function scheduleThreeCxStatusPolling(employee: Employee, callRunId: number) {
+    setCallStatus("ringing");
+    pollThreeCxStatus(employee, callRunId);
+
+    timersRef.current.push(
+      setInterval(() => {
+        pollThreeCxStatus(employee, callRunId);
+      }, THREECX_STATUS_POLL_INTERVAL_MS)
+    );
+
+    timersRef.current.push(
+      setTimeout(() => {
+        if (callRunIdRef.current !== callRunId) {
+          return;
+        }
+
+        void getPhoneCallStatusAction(employee.id)
+          .then((result) => {
+            const status = result.ok ? result.status : "failed";
+
+            applyThreeCxStatus(employee, callRunId, status);
+
+            if (
+              callRunIdRef.current === callRunId &&
+              status !== "connected" &&
+              status !== "ended" &&
+              status !== "idle" &&
+              status !== "failed"
+            ) {
+              setNoAnswerDecisionCountdown(
+                NO_ANSWER_DECISION_TIMEOUT_SECONDS
+              );
+              setIsNoAnswerOpen(true);
+            }
+          })
+          .catch(() => {
+            applyThreeCxStatus(employee, callRunId, "failed");
+          });
+      }, NO_ANSWER_TIMEOUT_MS)
+    );
+  }
+
+  function startMockCall(employee: Employee) {
+    callRunIdRef.current += 1;
+    clearCallTimers();
+
+    const callRunId = callRunIdRef.current;
+
+    setSelectedEmployee(employee);
+    setCallTarget("employee");
+    setIsNoAnswerOpen(false);
+    setNoAnswerDecisionCountdown(NO_ANSWER_DECISION_TIMEOUT_SECONDS);
+    setEndedCountdown(ENDED_CALL_RETURN_TIMEOUT_SECONDS);
+    setCallStatus("calling");
+    hasLoggedThreeCxConnectedRef.current = false;
+    hasLoggedThreeCxEndedRef.current = false;
 
     callEmployeeAction(employee.id).then((result) => {
       if (!result.ok && callRunIdRef.current === callRunId) {
         clearCallTimers();
         setCallStatus("failed");
       }
+
+      if (callRunIdRef.current !== callRunId || !result.ok) {
+        return;
+      }
+
+      if (result.provider === "3cx") {
+        scheduleThreeCxStatusPolling(employee, callRunId);
+        return;
+      }
+
+      scheduleMockCallTimers(callRunId);
     }).catch(() => {
       if (callRunIdRef.current === callRunId) {
         clearCallTimers();
