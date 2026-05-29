@@ -62,7 +62,8 @@ type MockCallStatus =
   | "connected"
   | "ended"
   | "cancelled"
-  | "failed";
+  | "failed"
+  | "endFailed";
 
 type MockCallTarget = "employee" | "reception";
 type ActivePhoneProvider = "mock" | "3cx";
@@ -70,6 +71,7 @@ type ActivePhoneProvider = "mock" | "3cx";
 const NO_ANSWER_TIMEOUT_MS = 5000;
 const NO_ANSWER_DECISION_TIMEOUT_SECONDS = 20;
 const ENDED_CALL_RETURN_TIMEOUT_SECONDS = 10;
+// Intentional: kiosk call status must update quickly for the person at the screen.
 const THREECX_STATUS_POLL_INTERVAL_MS = 1000;
 
 const callStatusCopy: Record<
@@ -89,8 +91,8 @@ const callStatusCopy: Record<
     description: "The call will stay open until you end it.",
   },
   ended: {
-    title: "Call ended. Thank you.",
-    description: "The call has finished.",
+    title: "Call ended",
+    description: "The call has ended.",
   },
   cancelled: {
     title: "Call cancelled.",
@@ -99,6 +101,10 @@ const callStatusCopy: Record<
   failed: {
     title: "We could not notify your host. Please try again or contact reception.",
     description: "The call request failed.",
+  },
+  endFailed: {
+    title: "We could not end the call.",
+    description: "Please hang up on the phone.",
   },
 };
 
@@ -129,6 +135,10 @@ const receptionStatusCopy: Record<
   failed: {
     title: "We could not notify reception. Please try again.",
     description: "The call request failed.",
+  },
+  endFailed: {
+    title: "We could not end the call.",
+    description: "Please hang up on the phone.",
   },
 };
 
@@ -638,7 +648,7 @@ export function VisitorFlow({
           .then((result) => {
             if (!result.ok) {
               clearCallTimers();
-              setCallStatus("failed");
+              setCallStatus("endFailed");
               return;
             }
 
@@ -651,7 +661,7 @@ export function VisitorFlow({
           })
           .catch(() => {
             clearCallTimers();
-            setCallStatus("failed");
+            setCallStatus("endFailed");
           })
           .finally(() => {
             setIsEndingCall(false);
@@ -935,15 +945,19 @@ export function VisitorFlow({
                 </Alert>
               ) : null}
 
-              {callStatus === "failed" ? (
+              {callStatus === "failed" || callStatus === "endFailed" ? (
                 <Alert variant="destructive" className="rounded-[8px] p-4">
                   <AlertTitle>
-                    {activePhoneProvider === "3cx"
+                    {callStatus === "endFailed"
+                      ? statusCopy[callStatus].title
+                      : activePhoneProvider === "3cx"
                       ? "Call failed"
                       : "Mock call failed"}
                   </AlertTitle>
                   <AlertDescription>
-                    {callTarget === "reception"
+                    {callStatus === "endFailed"
+                      ? statusCopy[callStatus].description
+                      : callTarget === "reception"
                       ? "We could not notify reception. Please try again."
                       : "We could not notify your host. Please try again or contact reception."}
                   </AlertDescription>
@@ -975,13 +989,19 @@ export function VisitorFlow({
 
               {callStatus === "ended" ||
               callStatus === "cancelled" ||
-              callStatus === "failed" ? (
+              callStatus === "failed" ||
+              callStatus === "endFailed" ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   <Button
                     type="button"
                     variant="outline"
                     className="h-16 rounded-[8px] text-lg"
                     onClick={() => {
+                      if (callStatus === "endFailed") {
+                        endMockCall();
+                        return;
+                      }
+
                       if (callTarget === "reception") {
                         startReceptionCall();
                         return;
@@ -992,7 +1012,7 @@ export function VisitorFlow({
                       }
                     }}
                   >
-                    Try again
+                    {callStatus === "endFailed" ? "End call" : "Try again"}
                   </Button>
                   <Button
                     asChild

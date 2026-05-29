@@ -78,3 +78,29 @@ export async function endPhoneCall() {
 
   return { provider };
 }
+
+export async function endEmployeeCall(employee: Employee) {
+  const provider = getPhoneProvider();
+
+  if (provider === "3cx") {
+    await endThreeCxPhoneCall({
+      phone_extension: employee.phone_extension,
+    });
+    return { provider };
+  }
+
+  return { provider };
+}
+
+export async function endReceptionCall() {
+  const provider = getPhoneProvider();
+
+  if (provider === "3cx") {
+    await endThreeCxPhoneCall({
+      phone_extension: getReceptionExtension(),
+    });
+    return { provider };
+  }
+
+  return { provider };
+}

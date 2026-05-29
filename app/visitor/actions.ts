@@ -4,7 +4,8 @@ import { logEvent } from "@/lib/eventLogs";
 import {
   callEmployee,
   callReception,
-  endPhoneCall,
+  endEmployeeCall,
+  endReceptionCall,
   getPhoneCallStatus,
   getReceptionCallStatus,
 } from "@/lib/phone/phoneProvider";
@@ -195,8 +196,19 @@ export async function logThreeCxReceptionStatusEventAction(
 }
 
 export async function endPhoneCallAction(employeeId: Employee["id"]) {
+  const { employees } = await getActiveEmployees();
+  const employee = employees.find((entry) => entry.id === employeeId);
+
+  if (!employee) {
+    return {
+      ok: false,
+      message:
+        "We could not end the call. Please try again or contact reception.",
+    };
+  }
+
   try {
-    const { provider } = await endPhoneCall();
+    const { provider } = await endEmployeeCall(employee);
 
     return { ok: true, provider };
   } catch (error) {
@@ -220,7 +232,7 @@ export async function endPhoneCallAction(employeeId: Employee["id"]) {
 
 export async function endReceptionCallAction() {
   try {
-    const { provider } = await endPhoneCall();
+    const { provider } = await endReceptionCall();
 
     return { ok: true, provider };
   } catch (error) {
@@ -228,10 +240,6 @@ export async function endReceptionCallAction() {
       provider: process.env.PHONE_PROVIDER?.trim() || "mock",
       error,
     });
-
-    if (process.env.PHONE_PROVIDER?.trim().toLowerCase() === "3cx") {
-      await logEvent("call_reception_failed_3cx", "3CX reception failed.");
-    }
 
     return {
       ok: false,
@@ -241,8 +249,19 @@ export async function endReceptionCallAction() {
 }
 
 export async function cancelPhoneCallAction(employeeId: Employee["id"]) {
+  const { employees } = await getActiveEmployees();
+  const employee = employees.find((entry) => entry.id === employeeId);
+
+  if (!employee) {
+    return {
+      ok: false,
+      message:
+        "We could not end the call. Please try again or contact reception.",
+    };
+  }
+
   try {
-    const { provider } = await endPhoneCall();
+    const { provider } = await endEmployeeCall(employee);
 
     if (provider === "3cx") {
       await logEvent("call_cancelled_3cx", "3CX call cancelled.", employeeId);
@@ -270,7 +289,7 @@ export async function cancelPhoneCallAction(employeeId: Employee["id"]) {
 
 export async function cancelReceptionCallAction() {
   try {
-    const { provider } = await endPhoneCall();
+    const { provider } = await endReceptionCall();
 
     if (provider === "3cx") {
       await logEvent(
@@ -285,10 +304,6 @@ export async function cancelReceptionCallAction() {
       provider: process.env.PHONE_PROVIDER?.trim() || "mock",
       error,
     });
-
-    if (process.env.PHONE_PROVIDER?.trim().toLowerCase() === "3cx") {
-      await logEvent("call_reception_failed_3cx", "3CX reception failed.");
-    }
 
     return {
       ok: false,
